@@ -1,0 +1,11 @@
+[
+  {
+    "type": "scenario",
+    "ident": "wilderness",
+    "copy-from": "wilderness",
+    "extend": {
+      "professions": [ "wanderer", "caveman" ],
+      "allowed_locs": [ "swamp" ]
+    }
+  }
+]

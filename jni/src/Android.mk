@@ -1,0 +1,24 @@
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := main
+
+SDL_PATH := ../SDL2
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/$(SDL_PATH)/include
+
+LOCAL_CPP_FEATURES := exceptions rtti
+
+# Add your application source files here...
+FILE_LIST := $(wildcard $(LOCAL_PATH)/*.cpp)
+LOCAL_SRC_FILES := $(SDL_PATH)/src/main/android/SDL_android_main.c $(FILE_LIST:$(LOCAL_PATH)/%=%)
+
+LOCAL_SHARED_LIBRARIES := SDL2 SDL2_mixer SDL2_image SDL2_ttf
+
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog
+
+#LOCAL_CFLAGS += -DRELEASE -DTILES -DSDL_SOUND -DCATA_NO_CPP11_STRING_CONVERSIONS
+LOCAL_CFLAGS += -DTILES -DSDL_SOUND -DCATA_NO_CPP11_STRING_CONVERSIONS
+
+include $(BUILD_SHARED_LIBRARY)

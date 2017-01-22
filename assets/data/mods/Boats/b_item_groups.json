@@ -1,0 +1,60 @@
+[
+  {
+    "id": "allsporting",
+    "type": "item_group",
+    "items": [
+      [ "inflatable_boat", 35 ],
+      [ "hand_pump", 10 ]
+    ]
+  },
+  {
+    "id": "camping",
+    "type": "item_group",
+    "items": [
+      [ "inflatable_boat", 25 ],
+      [ "hand_pump", 5 ]
+    ]
+  },
+  {
+    "id": "pawn",
+    "type": "item_group",
+    "items": [
+      [ "inflatable_boat", 10 ],
+      [ "hand_pump", 10 ]
+    ]
+  },
+  {
+    "id": "mil_surplus",
+    "type": "item_group",
+    "items": [
+      [ "inflatable_boat", 40 ],
+      [ "hand_pump", 40 ]
+    ]
+  },
+  {
+    "id": "shelter",
+    "type": "item_group",
+    "items": [
+      [ "inflatable_boat", 5 ],
+      [ "hand_pump", 5 ]
+    ]
+  },
+  {
+    "id": "sewage_plant",
+    "type": "item_group",
+    "//": "Handy if the flow runs a bit high.  ;-)",
+    "items": [
+      [ "inflatable_boat", 10 ],
+      [ "hand_pump", 10 ]
+    ]
+  },
+  {
+    "id": "arcade_prizes",
+    "type": "item_group",
+    "//": "One of those prizes you need approximately three million tickets to claim.",
+    "items": [
+      [ "inflatable_boat", 10 ],
+      [ "hand_pump", 15 ]
+    ]
+  }
+]
