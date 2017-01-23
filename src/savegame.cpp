@@ -40,6 +40,11 @@
 
 #include "tile_id_data.h"
 
+#ifdef __ANDROID__
+#include "input.h"
+extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
+#endif
+
 /*
  * Changes that break backwards compatibility should bump this number, so the game can
  * load a legacy format loader.
@@ -102,6 +107,21 @@ void game::serialize(std::ostream & fout) {
 
         json.member( "player", u );
         Messages::serialize( json );
+
+#ifdef __ANDROID__
+        json.member("quick_shortcuts");
+        json.start_object();
+        for( auto& e : quick_shortcuts_map ) {
+            json.member( e.first );
+            const std::list<input_event>& qsl = e.second;
+            json.start_array();
+            int save_start = 0;
+            for (const auto& event : qsl)
+                json.write(event.sequence[0]);
+            json.end_array();
+        }
+        json.end_object(); // quick_shortcuts
+#endif
 
         json.end_object();
 }
@@ -242,6 +262,21 @@ void game::unserialize(std::istream & fin)
 
         data.read("player", u);
         Messages::deserialize( data );
+
+#ifdef __ANDROID__
+        JsonObject qs = data.get_object("quick_shortcuts");
+        std::set<std::string> qsl_members = qs.get_member_names();
+        quick_shortcuts_map.clear();
+        for (std::set<std::string>::iterator it = qsl_members.begin();
+             it != qsl_members.end(); ++it) {
+            JsonArray ja = qs.get_array(*it);
+            std::list<input_event>& qslist = quick_shortcuts_map[(*it)];
+            qslist.clear();
+            while (ja.has_more()) {
+                qslist.push_back(input_event(ja.next_long(), CATA_INPUT_KEYBOARD));
+            }
+        }
+#endif
 
     } catch( const JsonError &jsonerr ) {
         debugmsg("Bad save json\n%s", jsonerr.c_str() );

@@ -30,8 +30,9 @@ public class CataclysmDDA extends SDLActivity {
     		// It would be cool if this wasn't necessary, but this is the path of least resistance to get it running on Android.
     		// I certainly don't fancy rewriting all of CDDA's file IO operations, how about you? :)
         if (!PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getBoolean("installed", false)) {
-            copyAssetFolder(getAssets(), "data", getFilesDir() + "/data");
-            copyAssetFolder(getAssets(), "gfx", getFilesDir() + "/gfx");
+            copyAssetFolder(getAssets(), "data", getExternalFilesDir(null) + "/data");
+            copyAssetFolder(getAssets(), "gfx", getExternalFilesDir(null) + "/gfx");
+            copyAssetFolder(getAssets(), "lua", getExternalFilesDir(null) + "/lua");
             PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putBoolean("installed", true).commit();
         }
         super.onCreate(savedInstanceState);

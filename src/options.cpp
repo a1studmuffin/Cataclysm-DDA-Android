@@ -1201,13 +1201,15 @@ void options_manager::init()
         0, 10000, 0, COPT_CURSES_HIDE
         );
 
+#ifndef __ANDROID__
     optionNames["fullscreen"] = _("Fullscreen");
     optionNames["windowedbl"] = _("Windowed borderless");
     add("FULLSCREEN", "graphics", _("Fullscreen"),
         _("Starts Cataclysm in one of the fullscreen modes. Requires restart."),
         "no,fullscreen,windowedbl", "no", COPT_CURSES_HIDE
         );
-
+#endif
+    
     add("SOFTWARE_RENDERING", "graphics", _("Software rendering"),
         _("Use software renderer instead of graphics card acceleration."),
         false, COPT_CURSES_HIDE

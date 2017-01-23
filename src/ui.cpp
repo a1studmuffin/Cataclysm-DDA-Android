@@ -770,6 +770,15 @@ void uimenu::query(bool loop)
     bool keycallback = (callback != NULL );
 
     show();
+
+#ifdef __ANDROID__
+    input_context ctxt("UI_MENU");
+    for (const auto& entry : entries) {
+        if (entry.hotkey > 0 && entry.enabled)
+            ctxt.register_manual_key(entry.hotkey, entry.txt);
+    }
+#endif
+    
     do {
         bool skiprefresh = false;
         bool skipkey = false;

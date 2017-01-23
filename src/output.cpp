@@ -25,6 +25,10 @@
 #include "name.h"
 #include "cata_utility.h"
 
+#ifdef __ANDROID__
+#include "SDL_keyboard.h"
+#endif
+
 // Display data
 int TERMX;
 int TERMY;
@@ -648,6 +652,13 @@ bool internal_query_yn( const char *mes, va_list ap )
     bool result = true;
     bool gotkey = false;
 
+#ifdef __ANDROID__
+    // Ensure proper android input context for touch
+    input_context ctxt("YESNO");
+    ctxt.register_manual_key('Y');
+    ctxt.register_manual_key('N');
+#endif
+
     while( ch != '\n' && ch != ' ' && ch != KEY_ESCAPE ) {
 
         // Upper case always works, lower case only if !force_uc.
@@ -800,6 +811,11 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
         bool only_digits, bool draw_only, std::map<long, std::function<void()>> callbacks,
         std::set<long> ch_code_blacklist )
 {
+#ifdef __ANDROID__
+    if (!draw_only && loop)
+        SDL_StartTextInput();
+#endif
+
     utf8_wrapper ret( input );
     nc_color string_color = c_magenta;
     nc_color cursor_color = h_ltgray;
@@ -910,6 +926,10 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
         }
 
         if( ch == KEY_ESCAPE ) {
+#ifdef __ANDROID__
+            SDL_StopTextInput();
+#endif
+
             return "";
         } else if( ch == '\n' ) {
             return_key = true;
@@ -1014,6 +1034,9 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
                         hist.push_back( ret.str() );
                     }
                 }
+#ifdef __ANDROID__
+                SDL_StopTextInput();
+#endif
                 return ret.str();
             }
         }
@@ -1107,6 +1130,9 @@ long popup( const std::string &text, PopupFlags flags )
     long ch = 0;
     // Don't wait if not required.
     while( ( flags & PF_NO_WAIT ) == 0 ) {
+#ifdef __ANDROID__
+        input_context ctxt("POPUP_WAIT");
+#endif
         wrefresh( w );
         ch = getch();
         if( ( flags & PF_GET_KEY ) != 0 ) {
@@ -2077,6 +2103,10 @@ void display_table( WINDOW *w, const std::string &title, int columns,
     const int rows = getmaxy( w ) - 2 - 1; // -2 for border, -1 for title
     const int col_width = width / columns;
     int offset = 0;
+
+#ifdef __ANDROID__
+        input_context ctxt("DISPLAY_TABLE"); // no bindings, but give it its own input context so stale buttons don't hang around.
+#endif
 
     const int title_length = utf8_width( title );
     for( ;; ) {

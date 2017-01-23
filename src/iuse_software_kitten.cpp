@@ -7,6 +7,10 @@
 #include <cstdlib>  // Needed for rand()
 #include <iostream>
 
+#ifdef __ANDROID__
+#include "input.h"
+#endif
+
 #define EMPTY -1
 #define ROBOT 0
 #define KITTEN 1
@@ -224,6 +228,10 @@ std::string robot_finds_kitten::getmessage(int idx)
 
 robot_finds_kitten::robot_finds_kitten(WINDOW *w)
 {
+#ifdef __ANDROID__
+    input_context ctxt("IUSE_SOFTWARE_KITTEN");
+#endif
+
     ret = false;
     char ktile[83] =
         "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#&()*+./:;=?![]{|}y";

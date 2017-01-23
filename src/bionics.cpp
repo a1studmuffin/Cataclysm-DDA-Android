@@ -310,6 +310,9 @@ bool player::activate_bionic( int b, bool eff_only )
         }
         wrefresh( w );
         refresh();
+#ifdef __ANDROID__
+        input_context ctxt("ANY_KEY");
+#endif
         getch();
         delwin( w );
     } else if( bio.id == "bio_blood_filter" ) {
