@@ -885,7 +885,13 @@ private:
 
         //  int autosave_timeout();  // If autosave enabled, how long we should wait for user inaction before saving.
         void autosave();         // automatic quicksaves - Performs some checks before calling quicksave()
+#ifdef __ANDROID__
+public:
+#endif
         void quicksave();        // Saves the game without quitting
+#ifdef __ANDROID__
+private:
+#endif
         void quickload();        // Loads the previously saved game if it exists
 
         // Input related

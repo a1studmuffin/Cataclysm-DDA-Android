@@ -14,6 +14,27 @@
 
 #include "printf_check.h"
 
+#ifdef __ANDROID__
+// See: http://stackoverflow.com/questions/10274920/how-to-get-printf-messages-written-in-ndk-application
+
+#if defined(RELEASE)
+
+#define  LOGD(...)
+#define  LOGE(...)
+
+#else
+
+#include <jni.h>
+#include <android/log.h>
+
+#define  LOG_TAG    "cdda"
+#define  LOGD(...)  __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+#endif
+
+#endif // __ANDROID__
+
 typedef int chtype;
 typedef unsigned short attr_t;
 

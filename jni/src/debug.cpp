@@ -354,6 +354,12 @@ std::ofstream &DebugFile::currentTime()
 
 std::ostream &DebugLog( DebugLevel lev, DebugClass cl )
 {
+#if defined(__ANDROID__) && !defined(RELEASE)
+    // Hack: In non-release builds, redirect all debug logging to standard output instead of log file.
+    std::cout << std::endl;
+    return std::cout;
+#endif
+
     // Error are always logged, they are important,
     // Messages from D_MAIN come from debugmsg and are equally important.
     if( ( ( lev & debugLevel ) && ( cl & debugClass ) ) || lev & D_ERROR || cl & D_MAIN ) {

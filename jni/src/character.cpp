@@ -1745,6 +1745,11 @@ hp_part Character::body_window( const std::string &menu_header,
         { false, bp_leg_r, hp_leg_r, _("Right Leg"), normal_bonus },
     } };
 
+#ifdef __ANDROID__
+    input_context ctxt("CHARACTER_BODY_WINDOW");
+    for( size_t i = 0; i < parts.size() + 1; i++ )
+        ctxt.register_manual_key('1' + i);
+#endif
     for( size_t i = 0; i < parts.size(); i++ ) {
         const auto &e = parts[i];
         const body_part bp = e.bp;

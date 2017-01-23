@@ -1025,7 +1025,11 @@ double Creature::projectile_attack_chance( double dispersion, double range, doub
     // erf(x / (sigma * sqrt(2))) is the probability that a measurement
     // of a normally distributed variable with standard deviation sigma
     // lies in the range [-x..x]
+#ifdef __ANDROID__
+    return erf( shot_dispersion / ( sigma * sqrt2 ) );
+#else
     return std::erf( shot_dispersion / ( sigma * sqrt2 ) );
+#endif
 }
 
 static int print_aim_bars( const player &p, WINDOW *w, int line_number, item *weapon,

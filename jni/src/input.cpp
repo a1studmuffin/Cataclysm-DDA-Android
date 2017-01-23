@@ -586,6 +586,30 @@ void input_manager::set_timeout( int delay )
     input_timeout = delay;
 }
 
+#ifdef __ANDROID__
+std::list<input_context*> input_context::input_context_stack;
+
+void input_context::register_manual_key(manual_key mk)
+{
+    // Prevent duplicates
+    for (const manual_key& manual_key : registered_manual_keys)
+        if (manual_key.key == mk.key)
+            return;
+
+    registered_manual_keys.push_back(mk);
+}
+
+void input_context::register_manual_key(long key, const std::string text)
+{
+    // Prevent duplicates
+    for (const manual_key& manual_key : registered_manual_keys)
+        if (manual_key.key == key)
+            return;
+
+    registered_manual_keys.push_back(manual_key(key, text)); 
+}
+#endif
+
 void input_context::register_action( const std::string &action_descriptor )
 {
     register_action( action_descriptor, "" );

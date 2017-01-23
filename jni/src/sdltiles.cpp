@@ -53,6 +53,10 @@
 #   include "sounds.h"
 #endif
 
+#ifdef __ANDROID__
+#include "worldfactory.h"
+#endif
+
 #define dbg(x) DebugLog((DebugLevel)(x),D_SDL) << __FILE__ << ":" << __LINE__ << ": "
 
 //***********************************
@@ -318,13 +322,17 @@ bool WinCreate()
         SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, get_option<std::string>( "SCALING_MODE" ).c_str() );
     }
 
+#ifndef __ANDROID__
     if (get_option<std::string>( "FULLSCREEN" ) == "fullscreen") {
+#endif
         window_flags |= SDL_WINDOW_FULLSCREEN;
+#ifndef __ANDROID__
     } else if (get_option<std::string>( "FULLSCREEN" ) == "windowedbl") {
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
     }
-
+#endif
+    
     int display = get_option<int>( "DISPLAY" );
     if ( display < 0 || display >= SDL_GetNumVideoDisplays() ) {
         display = 0;
@@ -342,13 +350,17 @@ bool WinCreate()
         dbg(D_ERROR) << "SDL_CreateWindow failed: " << SDL_GetError();
         return false;
     }
+#ifndef __ANDROID__
+	// On Android SDL seems janky in windowed mode so we're fullscreen all the time.
+	// Fullscreen mode is now modified so it obeys terminal width/height, rather than
+	// overwriting it with this calculation.
     if (window_flags & SDL_WINDOW_FULLSCREEN || window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) {
         SDL_GetWindowSize(window, &WindowWidth, &WindowHeight);
         // Ignore previous values, use the whole window, but nothing more.
         TERMINAL_WIDTH = WindowWidth / fontwidth;
         TERMINAL_HEIGHT = WindowHeight / fontheight;
     }
-
+#endif
     // Initialize framebuffer caches
     terminal_framebuffer.resize(TERMINAL_HEIGHT);
     for (int i = 0; i < TERMINAL_HEIGHT; i++) {
@@ -399,6 +411,13 @@ bool WinCreate()
             return false;
         }
     }
+
+#ifdef __ANDROID__
+	// TODO: Not too sure why this works to make fullscreen on Android behave. :/
+    if (window_flags & SDL_WINDOW_FULLSCREEN || window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) {
+        SDL_GetWindowSize(window, &WindowWidth, &WindowHeight);
+    }
+#endif
 
     ClearScreen();
 
@@ -636,6 +655,10 @@ void BitmapFont::OutputChar(long t, int x, int y, unsigned char color)
     }
 }
 
+#ifdef __ANDROID__
+void draw_quick_shortcuts();
+#endif
+
 void refresh_display()
 {
     needupdate = false;
@@ -647,9 +670,41 @@ void refresh_display()
         dbg(D_ERROR) << "SDL_SetRenderTarget failed: " << SDL_GetError();
     }
     SDL_RenderSetLogicalSize( renderer, WindowWidth, WindowHeight );
+#ifdef __ANDROID__
+	// If the display buffer aspect ratio is wider than the display, 
+	// draw it at the top of the screen so it doesn't get covered up
+	// by the virtual keyboard. Otherwise just center it.
+    int DisplayBufferWidth = TERMINAL_WIDTH * fontwidth;
+    int DisplayBufferHeight = TERMINAL_HEIGHT * fontheight;
+    SDL_Rect dstrect;
+    float DisplayBufferAspect = DisplayBufferWidth / (float)DisplayBufferHeight;
+    float WindowAspect = WindowWidth / (float)WindowHeight;
+    if (WindowAspect < DisplayBufferAspect)
+    {
+        dstrect.x = 0;
+        dstrect.y = 0;
+        dstrect.w = WindowWidth;
+        dstrect.h = WindowWidth / DisplayBufferAspect;
+    }
+    else
+    {
+        dstrect.x = 0.5f * (WindowWidth - (WindowHeight * DisplayBufferAspect));
+        dstrect.y = 0;
+        dstrect.w = WindowHeight * DisplayBufferAspect;
+        dstrect.h = WindowHeight;
+    }
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
+    SDL_RenderClear( renderer );
+    if( SDL_RenderCopy( renderer, display_buffer, NULL, &dstrect ) != 0 ) {
+#else
     if( SDL_RenderCopy( renderer, display_buffer, NULL, NULL ) != 0 ) {
+#endif
         dbg(D_ERROR) << "SDL_RenderCopy failed: " << SDL_GetError();
     }
+#ifdef __ANDROID__
+    // Draw quick shortcuts on top of the game view
+    draw_quick_shortcuts();
+#endif
     SDL_RenderPresent(renderer);
     if( SDL_SetRenderTarget( renderer, display_buffer ) != 0 ) {
         dbg(D_ERROR) << "SDL_SetRenderTarget failed: " << SDL_GetError();
@@ -994,6 +1049,11 @@ bool Font::draw_window( WINDOW *win, int offsetx, int offsety )
             std::vector<curseline> &framebuffer = use_oversized_framebuffer ? oversized_framebuffer :
                                              terminal_framebuffer;
 
+#ifdef __ANDROID__
+			// BUGFIX: Prevents an occasional crash when viewing player info. This seems like it might be a cross-platform issue in the experimental build
+            if (fby >= framebuffer.size() || fbx >= framebuffer[fby].chars.size())
+                continue;
+#endif
             cursecell &oldcell = framebuffer[fby].chars[fbx];
 
             if (oldWinCompatible && cell == oldcell && fontScale == fontScaleBuffer) {
@@ -1198,6 +1258,370 @@ long sdl_keysym_to_curses(SDL_Keysym keysym)
     }
 }
 
+#ifdef __ANDROID__
+static float finger_down_x = -1.0f; // in pixels
+static float finger_down_y = -1.0f; // in pixels
+static float finger_curr_x = -1.0f; // in pixels
+static float finger_curr_y = -1.0f; // in pixels
+static float second_finger_down_x = -1.0f; // in pixels
+static float second_finger_down_y = -1.0f; // in pixels
+static float second_finger_curr_x = -1.0f; // in pixels
+static float second_finger_curr_y = -1.0f; // in pixels
+static unsigned long finger_down_time = 0; // when did the first finger start touching the screen? 0 if not touching, otherwise the time in milliseconds.
+static unsigned long finger_repeat_time = 0; // the last time we repeated input for a finger hold, 0 if not touching, otherwise the time in milliseconds.
+static unsigned long last_tap_time = 0; // the last time a single tap was detected. used for double-tap detection.
+static unsigned long ac_back_down_time = 0; // when did the hardware back button start being pressed? 0 if not touching, otherwise the time in milliseconds.
+static bool is_two_finger_touch = false; // has a second finger touched the screen while the first was touching?
+static bool is_quick_shortcut_touch = false; // did this touch start on a quick shortcut?
+static bool quick_shortcuts_enabled = true;
+static bool quick_shortcuts_toggle_handled = false;
+static const unsigned long FINGER_INITIAL_DELAY = 300; // wait this long before repeating inputs for finger holds
+static const unsigned long FINGER_FLICK_DELAY = 150; // within this time is considered a flick
+static const unsigned long FINGER_REPEAT_DELAY_MIN = 100; // repeat input every X milliseconds - min
+static const unsigned long FINGER_REPEAT_DELAY_MAX = 400; // repeat input every X milliseconds - max
+static const float FINGER_REPEAT_DELAY_RANGE = 0.25f; // percentage of screen width to go from max -> min repeat delay
+static const float FINGER_DEADZONE_RANGE = 0.025f; // percentage of screen width to deadzone directional swipe input
+unsigned long finger_repeat_delay = FINGER_REPEAT_DELAY_MAX; // the current finger repeat delay - will be somewhere between the min/max values depending on user input
+
+// Quick shortcuts container: maps the touch input context category (std::string) to a std::list of input_events.
+typedef std::list<input_event> quick_shortcuts_t;
+std::map<std::string, quick_shortcuts_t> quick_shortcuts_map;
+
+// A copy of the last known input_context from the input manager. It's important this is a copy, as there are times
+// the input manager has an empty input_context (eg. when player is moving over slow objects) and we don't want our
+// quick shortcuts to disappear momentarily.
+input_context touch_input_context;
+
+// given the active quick shortcuts, returns the dimensions of each quick shortcut button.
+void get_quick_shortcut_dimensions(quick_shortcuts_t& qsl, float& border, float& width, float& height) {
+    float device_scale = std::max(WindowWidth, WindowHeight) / 1920.0f; // scale against longest edge of device
+    border = std::floor(0.0f * device_scale); // authored at 1080p
+    width = 160.0f * device_scale; // authored at 1080p
+    float min_width = 48.0f * device_scale;
+    if (width * qsl.size() > WindowWidth) {
+        width *= WindowWidth / (width * qsl.size());
+        if (width < min_width)
+            width = min_width;
+    }
+    width = std::floor(width);
+    height = std::floor(126.0f * device_scale); // authored at 1080p
+}
+
+// Returns the quick shortcut (if any) under the finger's current position, or finger down position if down == true
+input_event* get_quick_shortcut_under_finger(bool down = false) {
+
+    if (!quick_shortcuts_enabled)
+        return NULL;
+
+    quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+
+    float border, width, height;
+    get_quick_shortcut_dimensions(qsl, border, width, height);
+
+    float finger_y = down ? finger_down_y : finger_curr_y;
+    if (finger_y < WindowHeight - height)
+        return NULL;
+
+    int i = 0;
+    float finger_x = down ? finger_down_x : finger_curr_x;
+    for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it) {
+        i++;
+        if (finger_x < i * width)
+            return &(*it);
+    }
+
+    return NULL;
+}
+
+// when pre-populating a quick shortcut list with defaults, ignore these actions (since they're all handleable by native touch operations)
+bool ignore_action_for_quick_shortcuts(const std::string& action_id) {
+   return (action_id == "UP"
+        || action_id == "DOWN"
+        || action_id == "LEFT"
+        || action_id == "RIGHT"
+        || action_id == "LEFTUP"
+        || action_id == "LEFTDOWN"
+        || action_id == "RIGHTUP"
+        || action_id == "RIGHTDOWN"
+        || action_id == "QUIT"
+        || action_id == "CONFIRM"
+        || action_id == "MOVE_SINGLE_ITEM" // maps to ENTER
+        || action_id == "MOVE_ARMOR" // maps to ENTER
+        || action_id == "ANY_INPUT"
+        || action_id == "DELETE_TEMPLATE" // strictly we shouldn't have this one, but I don't like seeing the "d" on the main menu by default. :)
+        );
+}
+
+// Given a quick shortcut list and a specific key, move that key to the front or back of the list.
+void reorder_quick_shortcut(quick_shortcuts_t& qsl, long key, bool back) {
+        for(const auto& event : qsl) {
+            if (event.sequence[0] == key) {
+                input_event event_copy = event;
+                qsl.remove(event);
+                if (back)
+                    qsl.push_back(event_copy);
+                else
+                    qsl.push_front(event_copy);
+                break;
+            }
+        }
+}
+
+void reorder_quick_shortcuts(quick_shortcuts_t& qsl) {
+        // Do some manual reordering to make transitions between input contexts more consistent
+        // Desired order of keys: < > BACKTAB TAB PPAGE NPAGE . . . . ?
+        reorder_quick_shortcut(qsl, KEY_NPAGE, false);
+        reorder_quick_shortcut(qsl, KEY_PPAGE, false); // paging control
+        reorder_quick_shortcut(qsl, '\t', false);
+        reorder_quick_shortcut(qsl, KEY_BTAB, false); // secondary tabs after that
+        reorder_quick_shortcut(qsl, '>', false);
+        reorder_quick_shortcut(qsl, '<', false); // tabs next
+        reorder_quick_shortcut(qsl, '?', false); // help at the start
+}
+
+void draw_quick_shortcuts() {
+
+    if (!quick_shortcuts_enabled || 
+        (!is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= FINGER_INITIAL_DELAY)) // player is swipe + holding in a direction
+        return;
+
+    std::string& category = touch_input_context.get_category();
+    quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+    if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
+        if (category == "DEFAULTMODE") {
+            // add nothing since there's so many things defined it would be ridiculous. let player bind what they want as they play.
+        }
+        else {
+            // This is an empty quick-shortcuts list, let's pre-populate it as best we can from the input context
+            
+            // For manual key lists, force-clear them each time since there's no point allowing custom bindings anyway
+            if (touch_input_context.get_registered_manual_keys().size() > 0)
+                qsl.clear();
+
+            // First process registered actions
+            std::vector<std::string>& registered_actions = touch_input_context.get_registered_actions();
+            for (std::vector<std::string>::iterator it = registered_actions.begin(); it != registered_actions.end(); ++it) {
+                std::string& action_id = *it;
+                //LOGD("prepopulating action id %s...", action_id.c_str());
+                if (ignore_action_for_quick_shortcuts(action_id))
+                    continue;
+
+                const std::vector<input_event>& events = inp_mngr.get_input_for_action( action_id, category );
+                long best_key = -1;
+                for( const auto &events_event : events ) {
+                    if( events_event.type == CATA_INPUT_KEYBOARD && events_event.sequence.size() == 1 ) {
+                        bool is_ascii_char = isprint( events_event.sequence.front() ) && events_event.sequence.front() < 0xFF;
+                        bool is_best_ascii_char = best_key >= 0 && isprint( best_key ) && best_key < 0xFF;
+                        if ( best_key < 0 || (is_ascii_char && !is_best_ascii_char) ) {
+                            //LOGD("\tSelecting new best_key: old best_key: %ld isprint:%d new best_key: %ld isprint:%d", best_key, isprint(best_key), events_event.sequence.front(), isprint(events_event.sequence.front()) );
+                            best_key = events_event.sequence.front();
+                        }
+                    }
+                }
+                if (best_key >= 0)
+                    qsl.push_back(input_event(best_key, CATA_INPUT_KEYBOARD));
+            }            
+
+            // Then process manual keys
+            std::vector<input_context::manual_key>& registered_manual_keys = touch_input_context.get_registered_manual_keys();
+            for (const auto& manual_key : registered_manual_keys) {
+                //LOGD("prepopulating key %ld %s...", manual_key.key, manual_key.text.c_str());
+                qsl.push_back(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
+            }
+        }
+        reorder_quick_shortcuts(qsl);
+    }
+    
+    float border, width, height;
+    get_quick_shortcut_dimensions(qsl, border, width, height);
+    input_event* hovered_quick_shortcut = get_quick_shortcut_under_finger();
+    SDL_Rect rect;
+    bool hovered, show_hint;
+    int i = 0;
+    for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it) {
+        input_event& event = *it;
+        std::string text = event.text;
+        float default_text_scale = std::floor(0.75f * (height / font->fontheight)); // default for single character strings
+        float text_scale = default_text_scale;
+        if (text.empty() || text == " ") {
+            text = inp_mngr.get_keyname(event.get_first_input(), event.type);
+            text_scale = std::min(text_scale, 0.75f * (width / (font->fontwidth * text.length())));
+        }
+        hovered = is_quick_shortcut_touch && hovered_quick_shortcut == &event;
+        show_hint = hovered && SDL_GetTicks() - finger_down_time > FINGER_INITIAL_DELAY;
+        std::string hint_text;
+        if (show_hint) {
+            hint_text = touch_input_context.get_action_name(touch_input_context.input_to_action(event));
+            if (hint_text == "ERROR") {
+                hint_text = touch_input_context.get_action_name_for_manual_key(event.get_first_input());
+            }
+            if (hint_text == "ERROR" || hint_text.empty())
+                show_hint = false;
+        }
+        rect = { (int)(i * width), (int)(WindowHeight - height), (int)(width - border*2), (int)(height - border*2) };
+        if (hovered)
+            SDL_SetRenderDrawColor( renderer, 0, 0, 0, 255 );
+        else
+            SDL_SetRenderDrawColor( renderer, 0, 0, 0, 192 );
+        SDL_SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_BLEND );
+        SDL_RenderFillRect( renderer, &rect );
+        if (hovered) {
+            // draw a second button hovering above the first one
+            rect = { (int)(i * width), (int)(WindowHeight - height * 2.2f), (int)(width - border*2), (int)(height - border*2) };
+            SDL_SetRenderDrawColor( renderer, 0, 0, 196, 255 );
+            SDL_RenderFillRect( renderer, &rect );
+
+            if (show_hint) {
+                // draw a backdrop for the hint text
+                rect = { 0, (int)((WindowHeight - height)*0.5f), (int)WindowWidth, (int)height };
+                SDL_SetRenderDrawColor( renderer, 0, 0, 0, 192 );
+                SDL_RenderFillRect( renderer, &rect );                
+            }
+        }
+        SDL_SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_NONE );
+        SDL_RenderSetScale( renderer, text_scale, text_scale);
+        font->OutputChar( text, ((i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale, (WindowHeight - (height + font->fontheight * text_scale) * 0.5f) / text_scale, 15 );
+        if (hovered) {
+            // draw a second button hovering above the first one
+            font->OutputChar( text, ((i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale, (-height*2.2f / text_scale) + (WindowHeight - (-height + font->fontheight * text_scale) * 0.5f) / text_scale, 15 );
+            if (show_hint) {
+                // draw hint text
+                text_scale = default_text_scale;
+                hint_text = text + " " + hint_text;
+                const float safe_margin = 0.9f;
+                if (WindowWidth * safe_margin < font->fontwidth * text_scale * hint_text.length())
+                    text_scale *= (WindowWidth * safe_margin) / (font->fontwidth * text_scale * hint_text.length()); // scale to fit comfortably
+                SDL_RenderSetScale( renderer, text_scale, text_scale);
+                font->OutputChar( hint_text, (WindowWidth - (font->fontwidth * text_scale * hint_text.length())) * 0.5f / text_scale, (WindowHeight - font->fontheight * text_scale) * 0.5f / text_scale, 15 );
+            }
+        }
+        SDL_RenderSetScale( renderer, 1.0f, 1.0f);
+        i++;
+        if ((i+1) * width > WindowWidth)
+            break;
+    }
+}
+
+float clmp( float value, float low, float high ) { return ( value < low ) ? low : ( ( value > high ) ? high : value ); }
+float lerp(float t, float a, float b) { return (1.0f - t) * a + t * b; }
+
+void update_finger_repeat_delay() {
+    float delta_x = finger_curr_x - finger_down_x;
+    float delta_y = finger_curr_y - finger_down_y;
+    float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y);
+    float t = clmp((dist - (FINGER_DEADZONE_RANGE*WindowWidth)) / (FINGER_REPEAT_DELAY_RANGE*WindowWidth), 0.0f, 1.0f);
+    finger_repeat_delay = lerp(t, FINGER_REPEAT_DELAY_MAX, FINGER_REPEAT_DELAY_MIN);
+}
+
+// TODO: Is there a better way to detect when string entry is allowed?
+// ANY_INPUT seems close but is abused by code everywhere.
+// Had a look through and think I've got all the cases but can't be 100% sure.
+bool is_string_input(input_context& ctx) {
+    std::string& category = ctx.get_category();
+    return category == "STRING_INPUT"
+        || category == "HELP_KEYBINDINGS"
+        || category == "NEW_CHAR_DESCRIPTION"
+        || category == "WORLDGEN_CONFIRM_DIALOG";
+}
+
+// This function is triggered on finger up events, OR by a repeating timer for touch hold events.
+void handle_finger_input(unsigned long ticks) {
+
+    float delta_x = finger_curr_x - finger_down_x;
+    float delta_y = finger_curr_y - finger_down_y;
+    float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y); // in pixel space
+    bool handle_diagonals = touch_input_context.is_action_registered("LEFTUP");
+
+    if (dist > (FINGER_DEADZONE_RANGE*WindowWidth)) {
+        if (!handle_diagonals) {
+            if (delta_x >= 0 && delta_y >= 0)
+                last_input = input_event(delta_x > delta_y ? KEY_RIGHT : KEY_DOWN, CATA_INPUT_KEYBOARD);
+            else if (delta_x < 0 && delta_y >= 0)
+                last_input = input_event(-delta_x > delta_y ? KEY_LEFT : KEY_DOWN, CATA_INPUT_KEYBOARD);
+            else if (delta_x >= 0 && delta_y < 0)
+                last_input = input_event(delta_x > -delta_y ? KEY_RIGHT : KEY_UP, CATA_INPUT_KEYBOARD);
+            else if (delta_x < 0 && delta_y < 0)
+                last_input = input_event(-delta_x > -delta_y ? KEY_LEFT : KEY_UP, CATA_INPUT_KEYBOARD);
+        }
+        else {
+            if (delta_x > 0) {
+                if (std::abs(delta_y) < delta_x * 0.5f) {
+                    // swipe right
+                    last_input = input_event(KEY_RIGHT, CATA_INPUT_KEYBOARD);
+                }
+                else if (std::abs(delta_y) < delta_x * 2.0f) {
+                    if (delta_y < 0) {
+                        // swipe up-right
+                        last_input = input_event('u', CATA_INPUT_KEYBOARD);
+                    }
+                    else {
+                        // swipe down-right
+                        last_input = input_event('n', CATA_INPUT_KEYBOARD);
+                    }
+                }
+                else {
+                    if (delta_y < 0) {
+                        // swipe up
+                        last_input = input_event(KEY_UP, CATA_INPUT_KEYBOARD);
+                    }
+                    else {
+                        // swipe down
+                        last_input = input_event(KEY_DOWN, CATA_INPUT_KEYBOARD);
+                    }
+                }
+            }
+            else {
+                if (std::abs(delta_y) < -delta_x * 0.5f) {
+                    // swipe left
+                    last_input = input_event(KEY_LEFT, CATA_INPUT_KEYBOARD);
+                }
+                else if (std::abs(delta_y) < -delta_x * 2.0f) {
+                    if (delta_y < 0) {
+                        // swipe up-left
+                        last_input = input_event('y', CATA_INPUT_KEYBOARD);
+
+                    }
+                    else {
+                        // swipe down-left
+                        last_input = input_event('b', CATA_INPUT_KEYBOARD);
+                    }
+                }
+                else {
+                    if (delta_y < 0) {
+                        // swipe up
+                        last_input = input_event(KEY_UP, CATA_INPUT_KEYBOARD);
+                    }
+                    else {
+                        // swipe down
+                        last_input = input_event(KEY_DOWN, CATA_INPUT_KEYBOARD);
+                    }
+                }
+            }
+        }
+    }
+    else {
+        if (ticks - finger_down_time >= FINGER_INITIAL_DELAY) {
+            // Single tap (repeat) - held, so always treat this as a tap
+            // We only allow repeats for waiting, not confirming in menus as that's a bit silly
+            if (touch_input_context.get_category() == "DEFAULTMODE")
+                last_input = input_event('.', CATA_INPUT_KEYBOARD);
+        }
+        else {
+            if (last_tap_time > 0 && ticks - last_tap_time < FINGER_INITIAL_DELAY) {
+                // Double tap
+                last_input = input_event(KEY_ESCAPE, CATA_INPUT_KEYBOARD);
+                last_tap_time = 0;
+            }
+            else {
+                // First tap detected, waiting to decide whether it's a single or a double tap input
+                last_tap_time = ticks;
+            }
+        }
+    }
+}
+
+#endif
+
 //Check for any window messages (keypress, paint, mousemove, etc)
 void CheckMessages()
 {
@@ -1207,11 +1631,77 @@ void CheckMessages()
         return;
     }
 
+#ifdef __ANDROID__
+    unsigned long ticks = SDL_GetTicks();
+
+    // Copy the current input context
+    if (input_context::input_context_stack.size() > 0) {
+        input_context* new_input_context = *--input_context::input_context_stack.end();
+        if (new_input_context && *new_input_context != touch_input_context)
+            touch_input_context = *new_input_context;
+    }
+
+    // Don't do this logic if we already need an update, otherwise we're likely to overload the game with too much input on hold repeat events
+    if (!needupdate) {
+
+        // Toggle quick shortcuts on/off
+        if (ac_back_down_time > 0 && ticks - ac_back_down_time > FINGER_INITIAL_DELAY) {
+            if (!quick_shortcuts_toggle_handled) {
+                quick_shortcuts_enabled = !quick_shortcuts_enabled;
+                quick_shortcuts_toggle_handled = true;
+                refresh_display();
+            }
+        }
+
+        // Handle repeating inputs from touch + holds
+        if (!is_quick_shortcut_touch && !is_two_finger_touch && finger_down_time > 0 && ticks - finger_down_time > FINGER_INITIAL_DELAY) {
+            if (ticks - finger_repeat_time > finger_repeat_delay) {
+                handle_finger_input(ticks);
+                finger_repeat_time = ticks;
+                return;
+            }
+        }
+
+        // If we received a first tap and not another one within a certain period, this was a single tap, so trigger the input event
+        if (!is_quick_shortcut_touch && !is_two_finger_touch && last_tap_time > 0 && ticks - last_tap_time >= FINGER_INITIAL_DELAY) {
+            // Single tap
+            last_tap_time = ticks;
+            last_input = input_event((touch_input_context.get_category() == "DEFAULTMODE") ? '.' : '\n', CATA_INPUT_KEYBOARD);
+            last_tap_time = 0;
+            return;
+        }
+
+        // ensure hint text pops up even if player doesn't move finger to trigger a FINGERMOTION event
+        if (is_quick_shortcut_touch && finger_down_time > 0 && ticks - finger_down_time > FINGER_INITIAL_DELAY) {
+            needupdate = true;
+        }
+    }
+#endif
+
     last_input = input_event();
     while(SDL_PollEvent(&ev)) {
         switch(ev.type) {
             case SDL_WINDOWEVENT:
                 switch(ev.window.event) {
+#ifdef __ANDROID__
+                // SDL will send a focus lost event whenever the app loses focus (eg. lock screen, switch app focus etc.)
+                // If we detect it and the game seems in a saveable state, try and do a quicksave. This is a bit dodgy
+                // as the player could be ANYWHERE doing ANYTHING (a sub-menu, interacting with an NPC/computer etc.)
+                // but it seems to work so far, and the alternative is the player losing their progress as the app is likely
+                // to be destroyed pretty quickly when it goes out of focus due to memory usage.
+                case SDL_WINDOWEVENT_FOCUS_LOST:
+                    if (world_generator && world_generator->active_world && g && g->uquit == QUIT_NO) 
+                        g->quicksave();
+                    break;
+                // SDL sends a window size changed event whenever the screen rotates orientation
+                case SDL_WINDOWEVENT_SIZE_CHANGED:
+                    //LOGD("Window size changed: OldWindowWidth: %d OldWindowHeight: %d WindowWidth: %d WindowHeight: %d", WindowWidth, WindowHeight, ev.window.data1, ev.window.data2);
+                    WindowWidth = ev.window.data1;
+                    WindowHeight = ev.window.data2;
+                    refresh_display();
+                    needupdate = true;
+                    break;
+#endif
                 case SDL_WINDOWEVENT_SHOWN:
                 case SDL_WINDOWEVENT_EXPOSED:
                 case SDL_WINDOWEVENT_RESTORED:
@@ -1223,6 +1713,15 @@ void CheckMessages()
             break;
             case SDL_KEYDOWN:
             {
+#ifdef __ANDROID__
+                // Toggle virtual keyboard with Android back button. For some reason I get double inputs, so ignore everything once it's already down.
+                if (ev.key.keysym.sym == SDLK_AC_BACK && ac_back_down_time == 0) {
+                    LOGD("SDLK_AC_BACK down");
+                    ac_back_down_time = ticks;
+                    quick_shortcuts_toggle_handled = false;
+                }
+#endif
+
                 //hide mouse cursor on keyboard input
                 if(get_option<std::string>( "HIDE_CURSOR" ) != "show" && SDL_ShowCursor(-1)) {
                     SDL_ShowCursor(SDL_DISABLE);
@@ -1242,11 +1741,37 @@ void CheckMessages()
                     // key was handled
                 } else {
                     last_input = input_event(lc, CATA_INPUT_KEYBOARD);
+#ifdef __ANDROID__
+                    if (!is_string_input(touch_input_context)) {
+                        SDL_StopTextInput();
+
+                        // add a quick shortcut
+                        if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
+                            quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                            qsl.remove(last_input);
+                            qsl.push_front(last_input);
+                            reorder_quick_shortcuts(qsl);
+                            //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
+                            //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
+                        }
+                    }
+#endif
                 }
             }
             break;
             case SDL_KEYUP:
             {
+#ifdef __ANDROID__
+				// Toggle virtual keyboard with Android back button
+                if (ev.key.keysym.sym == SDLK_AC_BACK) {
+                    if (ticks - ac_back_down_time <= FINGER_INITIAL_DELAY) {
+                        // NOTE: We don't receive a key up event if the keyboard was already visible (yay SDL/android).
+                        if (!SDL_IsTextInputActive())
+                            SDL_StartTextInput();
+                    }
+                    ac_back_down_time = 0;
+                }
+#endif
                 if( ev.key.keysym.sym == SDLK_LALT || ev.key.keysym.sym == SDLK_RALT ) {
                     int code = end_alt_code();
                     if( code ) {
@@ -1263,6 +1788,19 @@ void CheckMessages()
                     const unsigned lc = UTF8_getch( &c, &len );
                     last_input = input_event( lc, CATA_INPUT_KEYBOARD );
                     last_input.text = ev.text.text;
+
+#ifdef __ANDROID__
+                    if (!is_string_input(touch_input_context)) {
+                        SDL_StopTextInput();
+
+                        quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                        qsl.remove(last_input);
+                        qsl.push_front(last_input);
+                        reorder_quick_shortcuts(qsl);
+                        //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
+                        //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
+                    }
+#endif
                 }
             break;
             case SDL_JOYBUTTONDOWN:
@@ -1271,6 +1809,8 @@ void CheckMessages()
             case SDL_JOYAXISMOTION: // on gamepads, the axes are the analog sticks
                 // TODO: somehow get the "digipad" values from the axes
             break;
+#ifndef __ANDROID__
+            // Disable mouse input on Android build, interferes with touch input
             case SDL_MOUSEMOTION:
                 if (get_option<std::string>( "HIDE_CURSOR" ) == "show" || get_option<std::string>( "HIDE_CURSOR" ) == "hidekb") {
                     if (!SDL_ShowCursor(-1)) {
@@ -1300,6 +1840,111 @@ void CheckMessages()
                     last_input = input_event(SCROLLWHEEL_DOWN, CATA_INPUT_MOUSE);
                 }
                 break;
+#endif
+
+#ifdef __ANDROID__
+              case SDL_FINGERMOTION:
+                //LOGD("SDL_FINGERMOTION: id:%lld x:%f y:%f", ev.tfinger.fingerId, ev.tfinger.x, ev.tfinger.y);
+                    if (ev.tfinger.fingerId == 0) {
+                        if (is_quick_shortcut_touch)
+                            needupdate = true; // ensure menu redraws as we highlight different stuff
+                        else
+                            update_finger_repeat_delay();
+                        finger_curr_x = ev.tfinger.x * WindowWidth;
+                        finger_curr_y = ev.tfinger.y * WindowHeight;
+                    }
+                    else if (ev.tfinger.fingerId == 1) {
+                        second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                        second_finger_curr_y = ev.tfinger.y * WindowHeight;
+                    }
+                break;
+              case SDL_FINGERDOWN:
+                //LOGD("SDL_FINGERDOWN: id:%lld x:%f y:%f", ev.tfinger.fingerId, ev.tfinger.x, ev.tfinger.y);
+                    if (ev.tfinger.fingerId == 0) {
+                        finger_down_x = finger_curr_x = ev.tfinger.x * WindowWidth;
+                        finger_down_y = finger_curr_y = ev.tfinger.y * WindowHeight;
+                        finger_down_time = ticks;
+                        finger_repeat_time = 0;
+                        is_quick_shortcut_touch = get_quick_shortcut_under_finger() != NULL;
+                        if (is_quick_shortcut_touch)
+                            needupdate = true; // ensure menu redraws as we highlight different stuff
+                        else
+                            update_finger_repeat_delay();
+                    } 
+                    else if (ev.tfinger.fingerId == 1) {
+                        if (!is_quick_shortcut_touch) {
+                            second_finger_down_x = second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                            second_finger_down_y = second_finger_curr_y = ev.tfinger.y * WindowHeight;
+                            is_two_finger_touch = true;
+                        }
+                    }
+                break;
+              case SDL_FINGERUP:
+                //LOGD("SDL_FINGERUP: id:%lld x:%f y:%f", ev.tfinger.fingerId, ev.tfinger.x, ev.tfinger.y);
+                if (ev.tfinger.fingerId == 0) {
+                    finger_curr_x = ev.tfinger.x * WindowWidth;
+                    finger_curr_y = ev.tfinger.y * WindowHeight;
+                    if (is_quick_shortcut_touch) {
+                        input_event* quick_shortcut = get_quick_shortcut_under_finger();
+                        if (quick_shortcut) {
+                            last_input = *quick_shortcut;
+                        }
+                        else {
+                            // Get the quick shortcut that was originally touched
+                            quick_shortcut = get_quick_shortcut_under_finger(true);
+                            if (quick_shortcut && 
+                                ticks - finger_down_time <= FINGER_FLICK_DELAY &&
+                                finger_curr_y < finger_down_y &&
+                                finger_down_y - finger_curr_y > std::abs(finger_down_x - finger_curr_x))
+                            {
+                                // a flick up was detected, remove the quick shortcut!
+                                quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                                qsl.remove(*quick_shortcut);
+                            }
+                        }
+                    }
+                    else {
+                        if (is_two_finger_touch) {
+                            // handle zoom in/out
+                            if (touch_input_context.get_category() == "DEFAULTMODE") {
+                                float down_x = finger_down_x - second_finger_down_x;
+                                float down_y = finger_down_y - second_finger_down_y;
+                                float down_dist = (float)sqrtf(down_x*down_x + down_y*down_y);
+                                float curr_x = finger_curr_x - second_finger_curr_x;
+                                float curr_y = finger_curr_y - second_finger_curr_y;
+                                float curr_dist = (float)sqrtf(curr_x*curr_x + curr_y*curr_y);
+                                const float zoom_ratio = 0.9f;
+                                if (curr_dist < down_dist * zoom_ratio) {
+                                    // zoom out
+                                    last_input = input_event('z', CATA_INPUT_KEYBOARD);
+                                } else if (curr_dist > down_dist / zoom_ratio) {
+                                    // zoom in
+                                    last_input = input_event('Z', CATA_INPUT_KEYBOARD);
+                                }                                 
+                            }
+                        }
+                        else if (ticks - finger_down_time <= FINGER_INITIAL_DELAY) {
+                            handle_finger_input(ticks);                        
+                        }
+                    }
+                    needupdate = true; // ensure menu redraws as we highlight different stuff                            
+                    second_finger_down_x = second_finger_curr_x = finger_down_x = finger_curr_x = -1.0f;
+                    second_finger_down_y = second_finger_curr_y = finger_down_y = finger_curr_y = -1.0f;
+                    is_two_finger_touch = false;
+                    finger_down_time = 0;
+                    finger_repeat_time = 0;
+                }
+                else if (ev.tfinger.fingerId == 1) {
+                    if (is_two_finger_touch) {
+                    // on second finger release, just remember the x/y position so we can calculate delta once first finger is done
+                    // is_two_finger_touch will be reset when first finger lifts (see above)
+                    second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                    second_finger_curr_y = ev.tfinger.y * WindowHeight;                        
+                    }
+                }
+
+                break;
+#endif
 
             case SDL_QUIT:
                 quit = true;

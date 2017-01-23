@@ -3671,6 +3671,13 @@ int iuse::firecracker_pack(player *p, item *it, bool, const tripoint& )
     int mid_x = getmaxx(w) / 2;
     int tmpx = 5;
     // TODO: Should probably be a input box anyway.
+#ifdef __ANDROID__
+    input_context ctxt("IUSE_FIRECRACKER_PACK");
+    ctxt.register_manual_key('I');
+    ctxt.register_manual_key('D');
+    ctxt.register_manual_key('A');
+    ctxt.register_manual_key('C');
+#endif
     mvwprintz(w, 1, 2, c_white, _("How many do you want to light? (1-%d)"), it->charges);
     mvwprintz(w, 2, mid_x, c_white, "1");
     tmpx += shortcut_print(w, 3, tmpx, c_white, c_ltred, _("<I>ncrease")) + 1;

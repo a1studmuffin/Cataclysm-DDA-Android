@@ -75,8 +75,11 @@ void main_menu::print_menu( WINDOW *w_open, int iSel, const int iMenuOffsetX, in
     }
 
     center_print( w_open, window_height - 1, c_red,
+#ifdef __ANDROID__
+                  _( "Please send bug reports and feedback to Michael Davies: m@michaeldavies.com.au" ) );
+#else
                   _( "Please report bugs on github.com/CleverRaven/Cataclysm-DDA/ or the forums." ) );
-
+#endif
     int iLine = 0;
     const int iOffsetX = ( window_width - FULL_SCREEN_WIDTH ) / 2;
 
