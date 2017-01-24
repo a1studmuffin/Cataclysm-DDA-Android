@@ -1499,7 +1499,7 @@ void options_manager::init()
 
     add("ANDROID_SHORTCUT_POSITION", "android", _("Shortcuts position"),
         _("Switch between shortcuts on the left or on the right side."),
-        "left,right", "right"
+        "left,right", "left"
         );
 
     add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (bg)"),
