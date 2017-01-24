@@ -334,10 +334,24 @@ class game
         bool revive_corpse( const tripoint &location, item &corpse );
 
         /**
-         *  Handles interactive parts of gun firing (target selection, etc.).
-         *  @return whether an attack was actually performed
+         * Returns true if the player is allowed to fire a given item, or false if otherwise.
+         * reload_time is stored as a side effect of condition testing.
+         * @param weapon The item that needs to be checked, which we are trying to fire.
+         * @param reload_time Modifies the time spent by certain guns reloading to fire.
+         * @return True if all conditions are true, otherwise false.
          */
-        bool plfire();
+        bool plfire_check( item &weapon, int &reload_time );
+
+        /**
+         * Handles interactive parts of gun firing (target selection, etc.).
+         * If weapon != nullptr, parameters are used and stored for future reference. 
+         * Otherwise, it tries using the stored parameters (player's weapon by default).
+         * @param weapon Pointer to the weapon we began aiming with.
+         * @param bp_cost The amount by which the player's power reserve is decreased after firing.
+         * @param held Whether the weapon to be fired requires the player to wield it.
+         * @return Whether an attack was actually performed.
+         */
+        bool plfire( item *weapon = nullptr, int bp_cost = 0, bool held = true );
 
         /** Target is an interactive function which allows the player to choose a nearby
          *  square.  It display information on any monster/NPC on that square, and also
@@ -451,15 +465,7 @@ class game
                                   int last_line, bool draw_terrain_indicators,
                                   const visibility_variables &cache );
 
-        std::vector<map_item_stack> find_nearby_items(int iRadius);
-        void draw_item_filter_rules(WINDOW *window, int rows);
-        std::string ask_item_priority_high(WINDOW *window, int rows);
-        std::string ask_item_priority_low(WINDOW *window, int rows);
         void draw_trail_to_square( const tripoint &t, bool bDrawX );
-        void reset_item_list_state(WINDOW *window, int height, bool bRadiusSort);
-        std::string sFilter; // this is a member so that it's remembered over time
-        std::string list_item_upvote;
-        std::string list_item_downvote;
 
         // @todo Move these functions to game_menus::inv and isolate them.
         int inv_for_filter( const std::string &title, item_filter filter, const std::string &none_message = "" );
@@ -737,9 +743,23 @@ class game
         void create_factions(); // Creates new factions (for a new game world)
         void create_starting_npcs(); // Creates NPCs that start near you
 
+        // V Menu Functions and helpers:
         void list_items_monsters(); // Called when you invoke the `V`-menu
-        int list_items(const int iLastState);
-        int list_monsters(const int iLastState);
+
+        enum class vmenu_ret : int {
+            CHANGE_TAB,
+            QUIT,
+            FIRE, // Who knew, apparently you can do that in list_monsters
+        };
+
+        game::vmenu_ret list_items( const std::vector<map_item_stack> &item_list );
+        std::vector<map_item_stack> find_nearby_items( int iRadius );
+        void reset_item_list_state( WINDOW *window, int height, bool bRadiusSort );
+        std::string sFilter; // this is a member so that it's remembered over time
+        std::string list_item_upvote;
+        std::string list_item_downvote;
+
+        game::vmenu_ret list_monsters( const std::vector<Creature *> &monster_list );
 
         /** Check for dangerous stuff at dest_loc, return false if the player decides
         not to step there */
@@ -879,7 +899,6 @@ private:
         void draw_HP();          // Draws the player's HP and Power level
         /** Draws the sidebar (if it's visible), including all windows there */
         void draw_sidebar();
-        void draw_safe_mode( WINDOW *win, int line ) const;
         void draw_sidebar_messages();
         void draw_pixel_minimap();  // Draws the pixel minimap based on the player's current location
 

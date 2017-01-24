@@ -16095,22 +16095,11 @@ static int func_item_is_corpse(lua_State *L) {
 }
 static int func_item_is_food(lua_State *L) {
     item& instance = LuaValueOrReference<item>::get(L, 1);
-    if(LuaReference<player>::has(L, 2)) {
-        auto && parameter1 = LuaReference<player>::get(L, 2);
-        if(lua_gettop(L) > 2) {
-            return luaL_error(L, "Too many arguments to is_food, expected only 2, got %d", lua_gettop(L));
-        }
-        LuaType<bool>::push(L, instance.is_food(parameter1));
-        return 1; // 1 return values
+    if(lua_gettop(L) > 1) {
+        return luaL_error(L, "Too many arguments to is_food, expected only 1, got %d", lua_gettop(L));
     }
-    if(lua_gettop(L) == 1) {
-        if(lua_gettop(L) > 1) {
-            return luaL_error(L, "Too many arguments to is_food, expected only 1, got %d", lua_gettop(L));
-        }
-        LuaType<bool>::push(L, instance.is_food());
-        return 1; // 1 return values
-    }
-    return luaL_argerror(L, 1, "Unexpected type, expected are player or nothing at all");
+    LuaType<bool>::push(L, instance.is_food());
+    return 1; // 1 return values
 }
 static int func_item_is_book(lua_State *L) {
     item& instance = LuaValueOrReference<item>::get(L, 1);
@@ -16559,22 +16548,11 @@ static int func_item_get_property_long(lua_State *L) {
 }
 static int func_item_is_food_container(lua_State *L) {
     item& instance = LuaValueOrReference<item>::get(L, 1);
-    if(LuaReference<player>::has(L, 2)) {
-        auto && parameter1 = LuaReference<player>::get(L, 2);
-        if(lua_gettop(L) > 2) {
-            return luaL_error(L, "Too many arguments to is_food_container, expected only 2, got %d", lua_gettop(L));
-        }
-        LuaType<bool>::push(L, instance.is_food_container(parameter1));
-        return 1; // 1 return values
+    if(lua_gettop(L) > 1) {
+        return luaL_error(L, "Too many arguments to is_food_container, expected only 1, got %d", lua_gettop(L));
     }
-    if(lua_gettop(L) == 1) {
-        if(lua_gettop(L) > 1) {
-            return luaL_error(L, "Too many arguments to is_food_container, expected only 1, got %d", lua_gettop(L));
-        }
-        LuaType<bool>::push(L, instance.is_food_container());
-        return 1; // 1 return values
-    }
-    return luaL_argerror(L, 1, "Unexpected type, expected are player or nothing at all");
+    LuaType<bool>::push(L, instance.is_food_container());
+    return 1; // 1 return values
 }
 static int func_item_add_rain_to_container(lua_State *L) {
     item& instance = LuaValueOrReference<item>::get(L, 1);

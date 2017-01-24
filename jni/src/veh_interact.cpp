@@ -244,7 +244,7 @@ bool veh_interact::format_reqs( std::ostringstream& msg, const requirement_data 
     bool ok = reqs.can_make_with_inventory( inv );
 
     msg << _( "<color_white>Time required:</color>\n" );
-    msg << "> " << calendar::print_duration( moves / 100 ) << "\n";
+    msg << "> " << calendar::print_approx_duration( moves / 100 ) << "\n";
 
     msg << _( "<color_white>Skills required:</color>\n" );
     for( const auto& e : skills ) {
@@ -973,7 +973,7 @@ bool veh_interact::do_refill( std::string &msg )
 
     auto act = [&]( const vehicle_part &pt ) {
         auto validate = [&]( const item &obj ) {
-            if( pt.is_tank() ) { 
+            if( pt.is_tank() ) {
                 // cannot refill using active liquids (those that rot) due to #18570
                 if( obj.is_watertight_container() && !obj.contents.empty() && !obj.contents.front().active ) {
                     return pt.can_reload( obj.contents.front().typeId() );
@@ -1796,25 +1796,18 @@ void veh_interact::display_stats()
         }
     }
 
-    double max_vel = std::accumulate( veh->parts.begin(), veh->parts.end(), 0.0f,
-                                      [&]( const double lhs, const vehicle_part &rhs ) {
-                                          return std::max( lhs, veh->max_velocity( rhs ) ); } );
-
-    double safe_vel = std::accumulate( veh->parts.begin(), veh->parts.end(), 0.0f,
-                                       [&]( const double lhs, const vehicle_part &rhs ) {
-                                           return std::max( lhs, veh->safe_velocity( rhs ) ); } );
-
-    double optimal_vel = std::accumulate( veh->parts.begin(), veh->parts.end(), 0.0f,
-                                          [&]( const double lhs, const vehicle_part &rhs ) {
-                                              return std::max( lhs, veh->optimal_velocity( rhs ) ); } );
-
     fold_and_print( w_stats, y[0], x[0], w[0], c_ltgray,
-                    _( "Optimal/Safe/Top Speed: <color_ltgreen>%d</color>/<color_yellow>%d</color>/<color_ltred>%d</color> %s" ),
-                    int( convert_velocity( ms_to_display( optimal_vel ), VU_VEHICLE ) ),
-                    int( convert_velocity( ms_to_display( safe_vel ), VU_VEHICLE ) ),
-                    int( convert_velocity( ms_to_display( max_vel ), VU_VEHICLE ) ),
+                    _( "Safe/Top Speed: <color_ltgreen>%3d</color>/<color_ltred>%3d</color> %s" ),
+                    int( convert_velocity( veh->safe_velocity( false ), VU_VEHICLE ) ),
+                    int( convert_velocity( veh->max_velocity( false ), VU_VEHICLE ) ),
                     velocity_units( VU_VEHICLE ) );
+    //TODO: extract accelerations units to its own function
 
+    fold_and_print( w_stats, y[1], x[1], w[1], c_ltgray,
+                    //~ /t means per turn
+                    _( "Acceleration: <color_ltblue>%3d</color> %s/t" ),
+                    int( convert_velocity( veh->acceleration( false ), VU_VEHICLE ) ),
+                    velocity_units( VU_VEHICLE ) );
     fold_and_print( w_stats, y[2], x[2], w[2], c_ltgray,
                     _( "Mass: <color_ltblue>%5.0f</color> %s" ),
                     convert_weight( veh->total_mass() * 1000.0f ), weight_units() );

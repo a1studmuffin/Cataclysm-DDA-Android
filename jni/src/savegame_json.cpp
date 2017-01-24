@@ -1295,7 +1295,7 @@ void monster::load(JsonObject &data)
                     if ( ptimeout >= 0 ) {
                         entry.cooldown = ptimeout;
                     } else { // -1 means disabled, unclear what <-1 values mean in old saves
-                        entry.cooldown = type->special_attacks.at(aname).get_cooldown();
+                        entry.cooldown = type->special_attacks.at(aname)->cooldown;
                         entry.enabled = false;
                     }
                 }
@@ -1319,7 +1319,7 @@ void monster::load(JsonObject &data)
         const std::string &aname = sa.first;
         if (special_attacks.find(aname) == special_attacks.end()) {
             auto &entry = special_attacks[aname];
-            entry.cooldown = rng(0, sa.second.get_cooldown());
+            entry.cooldown = rng(0, sa.second->cooldown);
         }
     }
 
@@ -1814,6 +1814,7 @@ void vehicle::deserialize(JsonIn &jsin)
     data.read("falling", falling);
     data.read("cruise_velocity", cruise_velocity);
     data.read("vertical_velocity", vertical_velocity);
+    data.read("cruise_on", cruise_on);
     data.read("engine_on", engine_on);
     data.read("tracking_on", tracking_on);
     data.read("skidding", skidding);
@@ -1899,12 +1900,6 @@ void vehicle::deserialize(JsonIn &jsin)
     set_legacy_state( "scoop_on", "SCOOP" );
     set_legacy_state( "plow_on", "PLOW" );
     set_legacy_state( "reactor_on", "REACTOR" );
-
-    for( auto &e : parts ) {
-        if( e.is_engine() && &e != &current_engine() ) {
-            e.enabled = false;
-        }
-    }
 }
 
 void vehicle::serialize(JsonOut &json) const
@@ -1921,6 +1916,7 @@ void vehicle::serialize(JsonOut &json) const
     json.member( "falling", falling );
     json.member( "cruise_velocity", cruise_velocity );
     json.member( "vertical_velocity", vertical_velocity );
+    json.member( "cruise_on", cruise_on );
     json.member( "engine_on", engine_on );
     json.member( "tracking_on", tracking_on );
     json.member( "skidding", skidding );

@@ -50,8 +50,6 @@
 #include <tuple>
 #include <iterator>
 
-using namespace units::literals;
-
 static const std::string GUN_MODE_VAR_NAME( "item::mode" );
 
 const skill_id skill_survival( "survival" );
@@ -900,7 +898,7 @@ std::string item::info( bool showtext, std::vector<iteminfo> &info ) const
     if( is_magazine() && !has_flag( "NO_RELOAD" ) ) {
         info.emplace_back( "MAGAZINE", _( "Capacity: " ),
                            string_format( ngettext( "<num> round of %s", "<num> rounds of %s", ammo_capacity() ),
-                                          _( ammo_name( ammo_type() ).c_str() ) ), ammo_capacity(), true );
+                                          ammo_name( ammo_type() ).c_str() ), ammo_capacity(), true );
 
         info.emplace_back( "MAGAZINE", _( "Reload time: " ), _( "<num> per round" ),
                            type->magazine->reload_time, true, "", true, true );
@@ -983,7 +981,7 @@ std::string item::info( bool showtext, std::vector<iteminfo> &info ) const
             if( mod->ammo_capacity() ) {
                 info.emplace_back( "GUN", _( "<bold>Capacity:</bold> " ),
                                    string_format( ngettext( "<num> round of %s", "<num> rounds of %s", mod->ammo_capacity() ),
-                                                  _( ammo_name( mod->ammo_type() ).c_str() ) ), mod->ammo_capacity(), true );
+                                                  ammo_name( mod->ammo_type() ).c_str() ), mod->ammo_capacity(), true );
             }
         } else {
             info.emplace_back( "GUN", _( "Type: " ), ammo_name( mod->ammo_type() ) );
@@ -1214,38 +1212,6 @@ std::string item::info( bool showtext, std::vector<iteminfo> &info ) const
         info.push_back( iteminfo( "GUNMOD", temp2.str() ) );
 
     }
-
-    if( is_engine() ) {
-        insert_separation_line();
-
-        if( !type->engine->fuel.is_null() ) {
-            auto col = string_from_color( item::find_type( default_ammo( type->engine->fuel ) )->color );
-            info.emplace_back( "ENGINE", _( "Fuel: " ),
-                               string_format( "<color_%s>%s</color>", col.c_str(), _( type->engine->fuel.c_str() ) ) );
-        }
-        if( type->engine->power > 0 && !has_flag( "MANUAL_ENGINE" ) ) {
-            info.emplace_back( "ENGINE", _( "Power: " ), _( "<num> hp" ), watt_to_hp( type->engine->power ), true );
-        }
-
-        info.emplace_back( "ENGINE", _( "Efficiency: " ), "<num>%", type->engine->efficiency, true );
-
-        if( !type->engine->gears.empty() ) {
-            info.emplace_back( "ENGINE", _( "Gears: " ), "", type->engine->gears.size(), true );
-        }
-        if( type->engine->redline > 0 ) {
-            info.emplace_back( "ENGINE", _( "Redline: " ), _( "<num> rpm" ), type->engine->redline, true );
-        }
-
-        if( engine_start_time( 20 ) > 0 ) {
-            info.emplace_back( "ENGINE", _( "Starting time (20°C): " ), _( "<num> seconds" ),
-                               int( engine_start_time( 20 ) / 16.67 ), true, "", true, true );
-        }
-        if( engine_start_time( 0 ) > 0 ) {
-            info.emplace_back( "ENGINE", _( "Starting time (0°C): " ), _( "<num> seconds" ),
-                               int( engine_start_time( 0 ) / 16.67 ), true, "", true, true );
-        }
-    }
-
     if( is_armor() ) {
         temp1.str( "" );
         temp1 << _( "Covers: " );
@@ -1505,7 +1471,7 @@ std::string item::info( bool showtext, std::vector<iteminfo> &info ) const
             insert_separation_line();
             info.push_back( iteminfo( "DESCRIPTION",
                 string_format( _( "Disassembling this item takes %s and might yield: %s." ),
-                               calendar::print_duration( dis.time / 100 ).c_str(), components_list.c_str() ) ) );
+                               calendar::print_approx_duration( dis.time / 100 ).c_str(), components_list.c_str() ) ) );
         }
     }
 
@@ -1609,18 +1575,6 @@ std::string item::info( bool showtext, std::vector<iteminfo> &info ) const
             auto &f = json_flag::get( e );
             if( !f.info().empty() ) {
                 info.emplace_back( "DESCRIPTION", string_format( "* %s", _( f.info().c_str() ) ) );
-            }
-        }
-
-        if( is_engine() ) {
-            if( type->engine->start_time == 0 ) {
-                info.emplace_back( "ENGINE", _( "* This engine can be started <good>instantaneously</good>." ) );
-            }
-            if( type->engine->start_energy == 0 ) {
-                info.emplace_back( "ENGINE", _( "* This engine can be started <good>without a battery</good>." ) );
-            }
-            if( type->engine->gears.empty() ) {
-                info.emplace_back( "ENGINE", _( "* This engines efficiency is <good>independent of speed</good>." ) );
             }
         }
 
@@ -1945,6 +1899,11 @@ int item::get_free_mod_locations( const std::string &location ) const
     return result;
 }
 
+int item::engine_displacement() const
+{
+    return type->engine ? type->engine->displacement : 0;
+}
+
 const std::string &item::symbol() const
 {
     return type->sym;
@@ -2214,8 +2173,11 @@ std::string item::tname( unsigned int quantity, bool with_prefix ) const
         damtext.insert( 0, _( "faulty " ) );
     }
 
-    std::string vehtext;
-    if( is_wheel() && type->wheel->diameter > 0 ) {
+    std::string vehtext = "";
+    if( is_engine() && engine_displacement() > 0 ) {
+        vehtext = string_format( pgettext( "vehicle adjective", "%2.1fL " ), engine_displacement() / 100.0f );
+
+    } else if( is_wheel() && type->wheel->diameter > 0 ) {
         vehtext = string_format( pgettext( "vehicle adjective", "%d\" " ), type->wheel->diameter );
     }
 
@@ -2363,12 +2325,13 @@ std::string item::display_name( unsigned int quantity ) const
             break;
     }
     int amount = 0;
-    bool itemContainer = is_container() && contents.size() == 1;
-    bool ammoContainer = is_ammo_container() && !contents.empty();
-    bool isContainer = itemContainer || ammoContainer;
+    bool has_item = is_container() && contents.size() == 1;
+    bool has_ammo = is_ammo_container() && !contents.empty();
+    bool contains = has_item || has_ammo;
+    bool show_amt = false;
 
     // We should handle infinite charges properly in all cases.
-    if( isContainer ) {
+    if( contains ) {
         amount = contents.front().charges;
     } else if( is_book() && get_chapters() > 0 ) {
         // a book which has remaining unread chapters
@@ -2376,12 +2339,13 @@ std::string item::display_name( unsigned int quantity ) const
     } else if( ammo_capacity() > 0 ) {
         // anything that can be reloaded including tools, magazines, guns and auxiliary gunmods
         amount = ammo_remaining();
+        show_amt = true;
     } else if( count_by_charges() && !has_infinite_charges() ) {
         // A chargeable item
         amount = charges;
     }
 
-    if( amount ) {
+    if( amount || show_amt ) {
         amt = string_format( " (%i)", amount );
     }
 
@@ -2927,7 +2891,7 @@ int item::get_encumber() const
     }
 
     // Fit checked before changes, fitting shouldn't reduce penalties from patching.
-    if( item_tags.count("FIT") ) {
+    if( item_tags.count("FIT") && has_flag( "VARSIZE" ) ) {
         encumber = std::max( encumber / 2, encumber - 10 );
     }
 
@@ -3524,57 +3488,20 @@ bool item::is_ammo() const
     return type->ammo.get() != nullptr;
 }
 
-bool item::is_food(player const*u) const
-{
-    if( !u ) {
-        return is_food();
-    }
-
-    if( is_null() ) {
-        return false;
-    }
-
-    if( type->comestible ) {
-        return true;
-    }
-
-    if( u->has_active_bionic( "bio_batteries" ) && is_ammo() && type->ammo->type.count( ammotype( "battery" ) ) ) {
-        return true;
-    }
-
-    if( ( u->has_active_bionic( "bio_reactor" ) ||
-          u->has_active_bionic( "bio_advreactor" ) ) &&
-        is_ammo() && ( type->ammo->type.count( ammotype( "plut_slurry" ) ) ||
-                       type->ammo->type.count( ammotype( "plutonium" ) ) ) ) {
-        return true;
-    }
-    if (u->has_active_bionic("bio_furnace") && flammable() && typeId() != "corpse")
-        return true;
-    return false;
-}
-
-bool item::is_food_container(player const*u) const
-{
-    return (contents.size() >= 1 && contents.front().is_food(u));
-}
-
-bool item::is_food() const
+bool item::is_comestible() const
 {
     return type->comestible != nullptr;
 }
 
-bool item::is_medication() const
+bool item::is_food() const
 {
-    if( type->comestible == nullptr || type->comestible->comesttype != "MED" ) {
-        return false;
-    }
-
-    return true;
+    return is_comestible() && ( type->comestible->comesttype == "FOOD" ||
+                                type->comestible->comesttype == "DRINK" );
 }
 
-bool item::is_medication_container() const
+bool item::is_medication() const
 {
-    return !contents.empty() && contents.front().is_medication();
+    return is_comestible() && type->comestible->comesttype == "MED";
 }
 
 bool item::is_brewable() const
@@ -3718,37 +3645,6 @@ int item::wheel_area() const
     return is_wheel() ? type->wheel->diameter * type->wheel->width : 0;
 }
 
-double item::engine_start_difficulty( int temperature ) const
-{
-    double res = 0.0;
-
-    // engine wear gradually increases penalty with a maximum of 0.3
-    if( max_damage() > 0 ) {
-        res += std::min( damage_ / double( max_damage() ), 0.3 );
-    }
-
-    // diesel engines with working glow plugs have maximum penalty of 0.6
-    if( has_flag( "COLD_START" ) ) {
-        static const fault_id fault_glowplug( "fault_engine_glow_plug" );
-        if( !faults.count( fault_glowplug ) ) {
-            temperature = std::max( temperature, 12 );
-        }
-        res += 1.0 - ( std::max( 0, std::min( 30, temperature ) ) / 30.0 );
-    }
-
-    return std::min( res, 1.0 );
-}
-
-int item::engine_start_time( int temp ) const
-{
-    return is_engine() ? type->engine->start_time * pow( 1.0 + engine_start_difficulty( temp ), 3 ) : 0;
-}
-
-int item::engine_start_energy( int temp ) const
-{
-    return is_engine() ? type->engine->start_energy * pow( 1.0 + engine_start_difficulty( temp ), 3 ) : 0;
-}
-
 bool item::is_container_empty() const
 {
     return contents.empty();
@@ -3858,6 +3754,15 @@ bool item::can_contain( const itype &tp ) const
 
     // @todo Acid in waterskins
     return true;
+}
+
+const item &item::get_contained() const
+{
+    if( contents.empty() ) {
+        static const item null_item;
+        return null_item;
+    }
+    return contents.front();
 }
 
 bool item::spill_contents( Character &c )

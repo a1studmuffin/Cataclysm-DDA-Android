@@ -12,7 +12,6 @@
 #include "init.h"
 #include "generic_factory.h"
 #include "character.h"
-#include "cata_utility.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -62,8 +61,8 @@ static const std::unordered_map<std::string, vpart_bitflags> vpart_bitflag_map =
     { "DOME_LIGHT", VPFLAG_DOME_LIGHT },
     { "AISLE_LIGHT", VPFLAG_AISLE_LIGHT },
     { "ATOMIC_LIGHT", VPFLAG_ATOMIC_LIGHT },
-    { "ENGINE", VPFLAG_ENGINE },
     { "ALTERNATOR", VPFLAG_ALTERNATOR },
+    { "ENGINE", VPFLAG_ENGINE },
     { "FRIDGE", VPFLAG_FRIDGE },
     { "LIGHT", VPFLAG_LIGHT },
     { "WINDOW", VPFLAG_WINDOW },
@@ -84,24 +83,6 @@ static DynamicDataLoader::deferred_json deferred;
 
 template<>
 const vpart_id string_id<vpart_info>::NULL_ID( "null" );
-
-vpart_info vpart_info::make_null_vpart_info()
-{
-    vpart_info null_part;
-
-    null_part.id = NULL_ID;
-    null_part.name_ = "null part";
-    null_part.sym = '?';
-    null_part.color = def_c_red;
-    null_part.sym_broken = '?';
-    null_part.color_broken = def_c_red;
-    null_part.durability = 100;
-    null_part.item = "null";
-    null_part.difficulty = 0;
-    null_part.flags.insert( "NOINSTALL" );
-
-    return null_part;
-}
 
 template<>
 bool string_id<vpart_info>::is_valid() const
@@ -197,7 +178,6 @@ void vpart_info::load( JsonObject &jo, const std::string &src )
     assign( jo, "size", def.size );
     assign( jo, "difficulty", def.difficulty );
     assign( jo, "bonus", def.bonus );
-    assign( jo, "tools", def.tools );
     assign( jo, "flags", def.flags );
 
     if( jo.has_member( "requirements" ) ) {
@@ -282,8 +262,6 @@ void vpart_info::finalize()
                 e.second.bitflags.set( b->second );
             }
         }
-
-        e.second.power = hp_to_watt( e.second.power );
 
         // Calculate and cache z-ordering based off of location
         // list_order is used when inspecting the vehicle
@@ -468,27 +446,12 @@ void vpart_info::check()
         if( !item::type_is_defined( part.item ) ) {
             debugmsg( "vehicle part %s uses undefined item %s", part.id.c_str(), part.item.c_str() );
         }
-
-        const itype *base = item::find_type( part.item );
-
-        if( part.has_flag( "TURRET" ) && !base->gun ) {
+        if( part.has_flag( "TURRET" ) && !item::find_type( part.item )->gun ) {
             debugmsg( "vehicle part %s has the TURRET flag, but is not made from a gun item", part.id.c_str() );
         }
-        if( part.has_flag( "ENGINE" ) && !base->engine ) {
-            debugmsg( "vehicle part %s has the ENGINE flag but base item is not an engine", part.id.c_str() );
-        }
-        if( part.has_flag( "REACTOR" ) && !( base->tool && base->tool->ammo_id != NULL_ID ) ) {
-            debugmsg( "vehicle part %s has the REACTOR flag but base item is not tool with ammo", part.id.c_str() );
-        }
-
         for( auto &q : part.qualities ) {
             if( !q.first.is_valid() ) {
                 debugmsg( "vehicle part %s has undefined tool quality %s", part.id.c_str(), q.first.c_str() );
-            }
-        }
-        for( const auto &e : part.tools ) {
-            if( !item::type_is_defined( e ) ) {
-                debugmsg( "vehicle part %s has undefined tool item %s", part.id.c_str(), e.c_str() );
             }
         }
     }
@@ -717,7 +680,7 @@ void vehicle_prototype::finalize()
             } else {
                 for( const auto &e : pt.ammo_types ) {
                     auto ammo = item::find_type( e );
-                    if( !ammo->ammo || !ammo->ammo->type.count( base->gun->ammo ) ) {
+                    if( !ammo->ammo && ammo->ammo->type.count( base->gun->ammo ) ) {
                         debugmsg( "init_vehicles: turret %s has invalid ammo_type %s in %s",
                                   pt.part.c_str(), e.c_str(), id.c_str() );
                     }

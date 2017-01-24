@@ -2341,21 +2341,6 @@ std::unique_ptr<Font> Font::load_font(const std::string &typeface, int fontsize,
     return nullptr;
 }
 
-//Ported from windows and copied comments as well
-//Not terribly sure how this function is suppose to work,
-//but jday helped to figure most of it out
-int curses_getch(WINDOW* win)
-{
-    input_event evt = inp_mngr.get_input_event(win);
-    while(evt.type != CATA_INPUT_KEYBOARD) {
-        evt = inp_mngr.get_input_event(win);
-        if (evt.type == CATA_INPUT_TIMEOUT) {
-            return ERR; // Calling functions expect an ERR on timeout
-        }
-    }
-    return evt.sequence[0];
-}
-
 //Ends the terminal, destroy everything
 int curses_destroy(void)
 {
@@ -2430,8 +2415,9 @@ int curses_start_color( void )
     return OK;
 }
 
-void curses_timeout(int t)
+void input_manager::set_timeout( const int t )
 {
+    input_timeout = t;
     inputdelay = t;
 }
 
@@ -2445,7 +2431,10 @@ input_event input_manager::get_input_event(WINDOW *win) {
     // see, e.g., http://linux.die.net/man/3/getch
     // so although it's non-obvious, that refresh() call (and maybe InvalidateRect?) IS supposed to be there
 
-    if(win == NULL) win = mainwin;
+#ifdef __ANDROID__
+    // BUGFIX for experimental - don't force mainwin if NULL win was passed in, otherwise this ruins the Android intro message.
+    //if(win == NULL) win = mainwin;
+#endif
 
     wrefresh(win);
 

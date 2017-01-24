@@ -1,1 +1,1 @@
-#define VERSION "Android"
+#define VERSION "0.C-20818-g6ec9931"

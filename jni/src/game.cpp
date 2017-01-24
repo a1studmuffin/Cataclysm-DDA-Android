@@ -1532,6 +1532,7 @@ bool game::do_turn()
 
         const bool in_bubble_z = m.has_zlevels() || sm_loc.z == get_levz();
         for( auto &veh : sm->vehicles ) {
+            veh->power_parts();
             veh->idle( in_bubble_z && m.inbounds(in_reality.x, in_reality.y) );
         }
     }
@@ -1842,9 +1843,7 @@ void game::handle_key_blocking_activity()
 
     if( u.activity && u.activity.moves_left > 0 && u.activity.is_abortable() ) {
         input_context ctxt = get_default_mode_input_context();
-        timeout(1);
-        const std::string action = ctxt.handle_input();
-        timeout(-1);
+        const std::string action = ctxt.handle_input( 1 );
         if (action == "pause") {
             cancel_activity_query(_("Confirm:"));
         } else if (action == "player_data") {
@@ -2378,7 +2377,7 @@ input_context game::get_player_input(std::string &action)
             //updating the pixel minimap here allows red flashing indicators for enemies to actually flicker
             draw_pixel_minimap();
         }
-        inp_mngr.set_timeout(-1);
+        inp_mngr.reset_timeout();
     } else {
         inp_mngr.set_timeout( 125 );
         while( handle_mouseview( ctxt, action ) ) {
@@ -2386,7 +2385,7 @@ input_context game::get_player_input(std::string &action)
                 break;
             }
         }
-        inp_mngr.set_timeout( -1 );
+        inp_mngr.reset_timeout();
     }
 
     return ctxt;
@@ -2453,7 +2452,7 @@ vehicle *game::remoteveh()
         tripoint vp;
         remote_veh_string >> vp.x >> vp.y >> vp.z;
         vehicle *veh = m.veh_at( vp );
-        if( veh && veh->fuel_left( "battery", true, true ) > 0 ) {
+        if( veh && veh->fuel_left( "battery", true ) > 0 ) {
             remoteveh_cache = veh;
         } else {
             remoteveh_cache = nullptr;
@@ -3023,7 +3022,7 @@ bool game::handle_action()
             }
 
             if( u.weapon.is_gun() ) {
-                plfire();
+                plfire( &u.weapon );
 
             } else if( u.weapon.has_flag( "REACH_ATTACK" ) ) {
                 int range = u.weapon.has_flag( "REACH3" ) ? 3 : 2;
@@ -3041,7 +3040,7 @@ bool game::handle_action()
         case ACTION_FIRE_BURST: {
             auto mode = u.weapon.gun_get_mode_id();
             if( u.weapon.gun_set_mode( "AUTO" ) ) {
-                plfire();
+                plfire( &u.weapon );
                 u.weapon.gun_set_mode( mode );
             }
             break;
@@ -3778,10 +3777,8 @@ bool game::load_packs( const std::string &msg, const std::vector<std::string>& p
         // if mod specifies legacy migrations load any that are required
         if( !mod.legacy.empty() ) {
             for( int i = get_world_option<int>( "CORE_VERSION" ); i < core_version; ++i ) {
-
                 popup_status( msg.c_str(), _( "Applying legacy migration (%s %i/%i)" ),
                               e.c_str(), i, core_version - 1 );
-
                 load_data_from_dir( string_format( "%s/%i", mod.legacy.c_str(), i ), mod.ident );
             }
         }
@@ -4305,7 +4302,7 @@ void game::debug()
                 mvwputch( w_terrain, offset.y + sound.y, offset.x + sound.x, c_red, '?' );
             }
             wrefresh( w_terrain );
-            getch();
+            inp_mngr.wait_for_any_key();
 #else
             popup( _( "This binary was not compiled with tiles support." ) );
 #endif
@@ -4724,7 +4721,7 @@ void game::disp_NPCs()
                   apos.x, apos.y, apos.z);
     }
     wrefresh(w);
-    getch();
+    inp_mngr.wait_for_any_key();
     werase(w);
     wrefresh(w);
     delwin(w);
@@ -4964,14 +4961,21 @@ void game::draw_sidebar()
     mvwprintz(w_location, 1, 15, c_ltgray, "%s ", _("Lighting:"));
     wprintz(w_location, ll.second, ll.first.c_str());
 
-    draw_safe_mode( w_location, 0 );
-
     wrefresh(w_location);
 
+    //Safemode coloring
     WINDOW *day_window = sideStyle ? w_status2 : w_status;
     mvwprintz(day_window, 0, sideStyle ? 0 : 41, c_white, _("%s, day %d"),
               season_name_upper(calendar::turn.get_season()).c_str(), calendar::turn.days() + 1);
-
+    if( safe_mode != SAFE_MODE_OFF || get_option<bool>( "AUTOSAFEMODE" ) ) {
+        int iPercent = turnssincelastmon * 100 / get_option<int>( "AUTOSAFEMODETURNS" );
+        wmove(w_status, sideStyle ? 4 : 1, getmaxx(w_status) - 4);
+        const char *letters[] = { "S", "A", "F", "E" };
+        for (int i = 0; i < 4; i++) {
+            nc_color c = (safe_mode == SAFE_MODE_OFF && iPercent < (i + 1) * 25) ? c_red : c_green;
+            wprintz(w_status, c, letters[i]);
+        }
+    }
     wrefresh(w_status);
     if( sideStyle ) {
         wrefresh(w_status2);
@@ -4980,40 +4984,6 @@ void game::draw_sidebar()
     draw_minimap();
     draw_pixel_minimap();
     draw_sidebar_messages();
-}
-
-void game::draw_safe_mode( WINDOW *win, int line ) const
-{
-    const bool autosafemode = get_option<bool>( "AUTOSAFEMODE" );
-    if( safe_mode == SAFE_MODE_OFF && !autosafemode ) {
-        return;
-    }
-
-    const utf8_wrapper safe_text( _( "SAFE" ) );
-    if( safe_mode != SAFE_MODE_OFF ) {
-        right_print( win, line, 1, c_green, "%s", safe_text.c_str() );
-        return;
-    }
-
-    if( autosafemode ) {
-        const float safe_mode_percent =
-            turnssincelastmon * 100.0f / get_option<int>( "AUTOSAFEMODETURNS" );
-
-        const int text_size = safe_text.size();
-        const int starting_position = getmaxx( win ) - safe_text.display_width() - 1;
-        const float percent_per_char = 100.0f / text_size;
-        int written_size = 0;
-        for( int i = 0; i < text_size; i++ ) {
-            nc_color letter_color = safe_mode_percent < ( i + 1 ) * percent_per_char
-                ? c_red : c_green;
-
-            const auto current_char = safe_text.substr( i, 1 );
-            mvwputch( win, line, starting_position + written_size,
-                      letter_color, current_char.str() );
-
-            written_size += current_char.display_width();
-        }
-    }
 }
 
 void game::draw_sidebar_messages()
@@ -6967,7 +6937,6 @@ void game::close()
 
 void game::close( const tripoint &closep )
 {
-    using namespace units::literals;
     bool didit = false;
     const bool inside = !m.is_outside( u.pos() );
 
@@ -8542,7 +8511,7 @@ void game::zones_manager()
 
             inp_mngr.set_timeout(BLINK_SPEED);
         } else {
-            inp_mngr.set_timeout(-1);
+            inp_mngr.reset_timeout();
         }
 
         wrefresh(w_zones);
@@ -8551,7 +8520,7 @@ void game::zones_manager()
         //Wait for input
         action = ctxt.handle_input();
     } while (action != "QUIT");
-    inp_mngr.set_timeout(-1);
+    inp_mngr.reset_timeout();
 
     werase(w_zones);
     werase(w_zones_border);
@@ -8838,7 +8807,7 @@ tripoint game::look_around( WINDOW *w_info, const tripoint &start_point,
         u.view_offset.z = 0;
     }
 
-    inp_mngr.set_timeout(-1);
+    inp_mngr.reset_timeout();
 
     if (bNewWindow) {
         werase(w_info);
@@ -8892,64 +8861,6 @@ std::vector<map_item_stack> game::find_nearby_items(int iRadius)
     }
 
     return ret;
-}
-
-void game::draw_item_filter_rules(WINDOW *window, int rows)
-{
-    for (int i = 0; i < rows - 1; i++) {
-        mvwprintz(window, i, 1, c_black, std::string(getmaxx(window) - 2, ' ').c_str());
-    }
-
-    mvwprintz(window, 0, 2, c_white, "%s", _("Type part of an item's name to"));
-    mvwprintz(window, 1, 2, c_white, "%s", _("filter it."));
-
-    mvwprintz(window, 3, 2, c_white, "%s", _("Separate multiple items with ,"));
-    mvwprintz(window, 4, 2, c_white, "%s", _("Example: back,flash,aid, ,band"));
-
-    mvwprintz(window, 6, 2, c_white, "%s", _("To exclude items, place - in front"));
-    mvwprintz(window, 7, 2, c_white, "%s", _("Example: -pipe,-chunk,-steel"));
-
-    mvwprintz(window, 9, 2, c_white, "%s", _("Search [c]ategory or [m]aterial:"));
-    mvwprintz(window, 10, 2, c_white, "%s", _("Example: c:food,m:iron"));
-    wrefresh(window);
-}
-
-std::string game::ask_item_priority_high(WINDOW *window, int rows)
-{
-    for (int i = 0; i < rows - 1; i++) {
-        mvwprintz(window, i, 1, c_black, std::string(getmaxx(window) - 2, ' ').c_str());
-    }
-
-    mvwprintz(window, 2, 2, c_white, "%s", _("Type part of an item's name to move"));
-    mvwprintz(window, 3, 2, c_white, "%s", _("nearby items to the top."));
-
-    mvwprintz(window, 5, 2, c_white, "%s", _("Separate multiple items with ,"));
-    mvwprintz(window, 6, 2, c_white, "%s", _("Example: back,flash,aid, ,band"));
-
-    mvwprintz(window, 8, 2, c_white, "%s", _("Search [c]ategory or [m]aterial:"));
-    mvwprintz(window, 9, 2, c_white, "%s", _("Example: {c:food},{m:iron}"));
-    wrefresh(window);
-    return string_input_popup(_("High Priority:"), 55, list_item_upvote,
-                              _("UP: history, CTRL-U clear line, ESC: abort, ENTER: save"), "list_item_priority", 256);
-}
-
-std::string game::ask_item_priority_low(WINDOW *window, int rows)
-{
-    for (int i = 0; i < rows - 1; i++) {
-        mvwprintz(window, i, 1, c_black, std::string(getmaxx(window) - 2, ' ').c_str());
-    }
-
-    mvwprintz(window, 2, 2, c_white, "%s", _("Type part of an item's name to move"));
-    mvwprintz(window, 3, 2, c_white, "%s", _("nearby items to the bottom."));
-
-    mvwprintz(window, 5, 2, c_white, "%s", _("Separate multiple items with ,"));
-    mvwprintz(window, 6, 2, c_white, "%s", _("Example: back,flash,aid, ,band"));
-
-    mvwprintz(window, 8, 2, c_white, "%s", _("Search [c]ategory or [m]aterial:"));
-    mvwprintz(window, 9, 2, c_white, "%s", _("Example: {c:food},{m:iron}"));
-    wrefresh(window);
-    return string_input_popup(_("Low Priority:"), 55, list_item_downvote,
-                              _("UP: history, CTRL-U clear line, ESC: abort, ENTER: save"), "list_item_downvote", 256);
 }
 
 void game::draw_trail_to_square( const tripoint &t, bool bDrawX )
@@ -9142,39 +9053,42 @@ int game::get_user_action_counter() const
 
 void game::list_items_monsters()
 {
-    int iRetItems = -1;
-    int iRetMonsters = -1;
-    int startas = uistate.list_item_mon;
-    temp_exit_fullscreen();
-    do {
-        if (startas != 2) { // last mode 2 = list_monster
-            startas = 0;      // but only for the first bit of the loop
-            iRetItems = list_items(iRetMonsters);
-        } else {
-            iRetItems = -2;   // so we'll try list_items if list_monsters found 0
-        }
-        if (iRetItems != -1 || startas == 2) {
-            startas = 0;
-            iRetMonsters = list_monsters(iRetItems);
-            if (iRetMonsters == 2) {
-                iRetItems = -1; // will fire, exit loop
-            } else if (iRetMonsters == -1 && iRetItems == -2) {
-                iRetItems = -1; // exit if requested on list_monsters firstrun
-            }
-        }
-    } while (iRetItems != -1 && iRetMonsters != -1 && !(iRetItems == 0 && iRetMonsters == 0));
+    const std::vector<Creature *> mons = u.get_visible_creatures( DAYLIGHT_LEVEL );
+    ///\EFFECT_PER increases range of interacting with items on the ground from a list
+    const std::vector<map_item_stack> items = find_nearby_items( 2 * u.per_cur + 12 );
 
-    if (iRetItems == 0 && iRetMonsters == 0) {
-        add_msg(m_info, _("You don't see any items or monsters around you!"));
-    } else if (iRetMonsters == 2) {
-        refresh_all();
+    if( mons.empty() && items.empty() ) {
+        add_msg( m_info, _( "You don't see any items or monsters around you!" ) );
+        return;
+    }
+    // If the current list is empty, switch to the non-empty list
+    if( uistate.vmenu_show_items ) {
+        if( items.empty() ) {
+            uistate.vmenu_show_items = false;
+        }
+    } else if( mons.empty() ) {
+        uistate.vmenu_show_items = true;
+    }
+
+    temp_exit_fullscreen();
+    game::vmenu_ret ret;
+    while( true ) {
+        ret = uistate.vmenu_show_items ? list_items( items ) : list_monsters( mons );
+        if( ret == game::vmenu_ret::CHANGE_TAB ) {
+            uistate.vmenu_show_items = !uistate.vmenu_show_items;
+        } else {
+            break;
+        }
+    }
+
+    refresh_all();
+    if( ret == game::vmenu_ret::FIRE ) {
         plfire();
     }
-    refresh_all();
     reenter_fullscreen();
 }
 
-int game::list_items(const int iLastState)
+game::vmenu_ret game::list_items( const std::vector<map_item_stack> &item_list )
 {
     int iInfoHeight = std::min(25, TERMY / 2);
     const int width = use_narrow_sidebar() ? 45 : 55;
@@ -9207,28 +9121,18 @@ int game::list_items(const int iLastState)
         uistate.list_item_init = true;
     }
 
-    //this stores the items found, along with the coordinates
-    ///\EFFECT_PER increases range of interacting with items on the ground from a list
-    const std::vector<map_item_stack> ground_items_radius = find_nearby_items( 2 * u.per_cur + 12 );
-    if( iLastState != 1 && ground_items_radius.empty() ) {
-        return 0;
-    }
-    std::vector<map_item_stack> ground_items = ground_items_radius;
+    std::vector<map_item_stack> ground_items = item_list;
     //this stores only those items that match our filter
     std::vector<map_item_stack> filtered_items =
         !sFilter.empty() ? filter_item_stacks( ground_items, sFilter ) : ground_items;
     int highPEnd = list_filter_high_priority(filtered_items, list_item_upvote);
     int lowPStart = list_filter_low_priority(filtered_items, highPEnd, list_item_downvote);
     int iItemNum = ground_items.size();
-    if (iItemNum > 0) {
-        uistate.list_item_mon = 1; // remember we've tabbed here
-    }
 
     const tripoint stored_view_offset = u.view_offset;
 
     u.view_offset = tripoint_zero;
 
-    int iReturn = -1;
     int iActive = 0; // Item index that we're looking at
     const int iMaxRows = TERMY - iInfoHeight - 2 - VIEW_OFFSET_Y * 2;
     int iStartPos = 0;
@@ -9269,7 +9173,7 @@ int game::list_items(const int iLastState)
             reset = true;
             refresh_all();
         } else if( action == "FILTER" ) {
-            draw_item_filter_rules( w_item_info, iInfoHeight );
+            draw_item_filter_rules( w_item_info, 0, iInfoHeight - 1, item_filter_type::FILTER );
             sFilter = string_input_popup( _( "Filter:" ), 55, sFilter,
                                           _( "UP: history, CTRL-U: clear line, ESC: abort, ENTER: save" ),
                                           "item_filter", 256 );
@@ -9296,13 +9200,19 @@ int game::list_items(const int iLastState)
             iLastActive = tripoint_min;
             reset = true;
         } else if( action == "PRIORITY_INCREASE" ) {
-            list_item_upvote = ask_item_priority_high( w_item_info, iInfoHeight );
+            draw_item_filter_rules( w_item_info, 0, iInfoHeight - 1, item_filter_type::HIGH_PRIORITY );
+            list_item_upvote = string_input_popup( _( "High Priority:" ), 55, list_item_upvote,
+                                                   _( "UP: history, CTRL-U clear line, ESC: abort, ENTER: save" ),
+                                                   "list_item_priority", 256 );
             refilter = true;
             reset = true;
             addcategory = !sort_radius;
             uistate.list_item_priority_active = !list_item_upvote.empty();
         } else if( action == "PRIORITY_DECREASE" ) {
-            list_item_downvote = ask_item_priority_low( w_item_info, iInfoHeight );
+            draw_item_filter_rules( w_item_info, 0, iInfoHeight - 1, item_filter_type::LOW_PRIORITY );
+            list_item_downvote = string_input_popup( _( "Low Priority:" ), 55, list_item_downvote,
+                                                     _( "UP: history, CTRL-U clear line, ESC: abort, ENTER: save" ),
+                                                     "list_item_downvote", 256 );
             refilter = true;
             reset = true;
             addcategory = !sort_radius;
@@ -9337,7 +9247,7 @@ int game::list_items(const int iLastState)
             }
         }
         if( uistate.list_item_sort == 1 ) {
-            ground_items = ground_items_radius;
+            ground_items = item_list;
         } else if( uistate.list_item_sort == 2 ) {
             std::sort( ground_items.begin(), ground_items.end(), map_item_stack::map_item_stack_sort );
         }
@@ -9414,10 +9324,10 @@ int game::list_items(const int iLastState)
             iScrollPos++;
         } else if( action == "NEXT_TAB" || action == "PREV_TAB" ) {
             u.view_offset = stored_view_offset;
-            return 1;
+            return game::vmenu_ret::CHANGE_TAB;
         }
 
-        if( ground_items.empty() && iLastState == 1 ) {
+        if( ground_items.empty() ) {
             reset_item_list_state( w_items_border, iInfoHeight, sort_radius );
             wrefresh( w_items_border );
             mvwprintz( w_items, 10, 2, c_white, _( "You don't see any items around you!" ) );
@@ -9481,7 +9391,7 @@ int game::list_items(const int iLastState)
                         const int x = iter->vIG[iThisPage].pos.x;
                         const int y = iter->vIG[iThisPage].pos.y;
                         mvwprintz( w_items, iNum - iStartPos, width - 6 - numw, iNum == iActive ? c_ltgreen : c_ltgray,
-                                   "%*d %s", numw, square_dist( 0, 0, x, y ),
+                                   "%*d %s", numw, rl_dist( 0, 0, x, y ),
                                    direction_name_short( direction_from( 0, 0, x, y ) ).c_str() );
                         ++iter;
                     }
@@ -9516,7 +9426,7 @@ int game::list_items(const int iLastState)
             wrefresh( w_items_border );
         }
 
-        const bool bDrawLeft = ( ground_items.empty() && iLastState == 1 ) || filtered_items.empty();
+        const bool bDrawLeft = ground_items.empty() || filtered_items.empty();
         draw_custom_border( w_item_info, bDrawLeft, true, false, true, LINE_XOXO, LINE_XOXO, true, true);
         wrefresh(w_items);
         wrefresh(w_item_info);
@@ -9525,18 +9435,11 @@ int game::list_items(const int iLastState)
     } while (action != "QUIT");
 
     u.view_offset = stored_view_offset;
-    return iReturn;
+    return game::vmenu_ret::QUIT;
 }
 
-int game::list_monsters(const int iLastState)
+game::vmenu_ret game::list_monsters( const std::vector<Creature *> &monster_list )
 {
-    const auto vMonsters = u.get_visible_creatures( DAYLIGHT_LEVEL );
-    const int iMonsterNum = vMonsters.size();
-
-    if( vMonsters.empty() && iLastState != 1 ) {
-        return 0;
-    }
-
     int iInfoHeight = 12;
     const int width = use_narrow_sidebar() ? 45 : 55;
     const int offsetX = right_sidebar ? TERMX - VIEW_OFFSET_X - width :
@@ -9554,8 +9457,6 @@ int game::list_monsters(const int iLastState)
     WINDOW *w_monster_info_border = newwin(iInfoHeight, width,
                                            TERMY - iInfoHeight - VIEW_OFFSET_Y, offsetX);
     WINDOW_PTR w_monster_info_borderptr( w_monster_info_border );
-
-    uistate.list_item_mon = 2; // remember we've tabbed here
 
     const int iWeaponRange = u.gun_engagement_range( u.weapon, player::engagement::maximum );
 
@@ -9612,16 +9513,16 @@ int game::list_monsters(const int iLastState)
         if (action == "UP") {
             iActive--;
             if (iActive < 0) {
-                iActive = iMonsterNum - 1;
+                iActive = int( monster_list.size() ) - 1;
             }
         } else if (action == "DOWN") {
             iActive++;
-            if (iActive >= iMonsterNum) {
+            if( iActive >= int( monster_list.size() ) ) {
                 iActive = 0;
             }
         } else if (action == "NEXT_TAB" || action == "PREV_TAB") {
             u.view_offset = stored_view_offset;
-            return 1;
+            return game::vmenu_ret::CHANGE_TAB;
         } else if (action == "SAFEMODE_BLACKLIST_REMOVE") {
             const auto m = dynamic_cast<monster*>( cCurMon );
             const std::string monName = (m != nullptr) ? m->name() : "human";
@@ -9644,27 +9545,27 @@ int game::list_monsters(const int iLastState)
                 rl_dist( u.pos(), cCurMon->pos() ) <= iWeaponRange) {
                 last_target = mon_at( cCurMon->pos(), true );
                 u.view_offset = stored_view_offset;
-                return 2;
+                return game::vmenu_ret::FIRE;
             }
         }
 
-        if (vMonsters.empty()) {
+        if( monster_list.empty() ) {
             wrefresh(w_monsters_border);
             mvwprintz(w_monsters, 10, 2, c_white, _("You don't see any monsters around you!"));
         } else {
-            if( static_cast<size_t>( iActive ) >= vMonsters.size() ) {
+            if( static_cast<size_t>( iActive ) >= monster_list.size() ) {
                 iActive = 0;
             }
             werase(w_monsters);
 
-            calcStartPos(iStartPos, iActive, iMaxRows, iMonsterNum);
+            calcStartPos( iStartPos, iActive, iMaxRows, int( monster_list.size() ) );
 
-            cCurMon = vMonsters[iActive];
+            cCurMon = monster_list[iActive];
             iActivePos = cCurMon->pos() - u.pos();
 
-            const auto endY = std::min<int>( iMaxRows, iMonsterNum - iStartPos );
+            const auto endY = std::min<int>( iMaxRows, int( monster_list.size() ) - iStartPos );
             for( int y = 0; y < endY; ++y ) {
-                const auto critter = vMonsters[y + iStartPos];
+                const auto critter = monster_list[y + iStartPos];
                 const bool selected = ( cCurMon == critter );
                 const auto m = dynamic_cast<monster*>( critter );
                 const auto p = dynamic_cast<npc*>( critter );
@@ -9715,19 +9616,16 @@ int game::list_monsters(const int iLastState)
                     }
                     mvwprintz(w_monsters, y, 28, color, "%s", sText.c_str());
 
-                    int numw = iMonsterNum > 9 ? 2 : 1;
-                    mvwprintz(w_monsters, y, width - (6 + numw),
-                                (selected ? c_ltgreen : c_ltgray), "%*d %s",
-                                numw, square_dist(0, 0, critter->posx() - u.posx(),
-                                                critter->posy() - u.posy()),
-                                direction_name_short(
-                                    direction_from( 0, 0, critter->posx() - u.posx(),
-                                                    critter->posy() - u.posy())).c_str() );
+                    int numw = monster_list.size() > 9 ? 2 : 1;
+                    mvwprintz( w_monsters, y, width - (6 + numw), (selected ? c_ltgreen : c_ltgray), "%*d %s",
+                                numw, rl_dist( u.pos(), critter->pos() ),
+                                direction_name_short( direction_from( u.pos(), critter->pos() ) ).c_str() );
             }
 
-            mvwprintz(w_monsters_border, 0, (width - 9) / 2 + ((iMonsterNum > 9) ? 0 : 1),
-                        c_ltgreen, " %*d", ((iMonsterNum > 9) ? 2 : 1), iActive + 1);
-            wprintz(w_monsters_border, c_white, " / %*d ", ((iMonsterNum > 9) ? 2 : 1), iMonsterNum);
+            // TODO: What makes 9 so magic?
+            mvwprintz( w_monsters_border, 0, (width - 9) / 2 + monster_list.size() > 9 ? 0 : 1,
+                       c_ltgreen, " %*d", monster_list.size() > 9 ? 2 : 1, iActive + 1 );
+            wprintz( w_monsters_border, c_white, " / %*d ", monster_list.size() > 9 ? 2 : 1, int( monster_list.size() ) );
 
             werase(w_monster_info);
 
@@ -9752,7 +9650,7 @@ int game::list_monsters(const int iLastState)
                 draw_trail_to_square( iActivePos, false );
             }
 
-            draw_scrollbar(w_monsters_border, iActive, iMaxRows, iMonsterNum, 1);
+            draw_scrollbar( w_monsters_border, iActive, iMaxRows, int( monster_list.size() ), 1 );
             wrefresh(w_monsters_border);
         }
 
@@ -9779,7 +9677,7 @@ int game::list_monsters(const int iLastState)
 
     u.view_offset = stored_view_offset;
 
-    return -1;
+    return game::vmenu_ret::QUIT;
 }
 
 // Establish or release a grab on a vehicle
@@ -9945,7 +9843,7 @@ bool game::handle_liquid( item &liquid, item * const source, const int radius,
     }
     std::vector<std::function<void()>> actions;
 
-    if( liquid.is_food( &u ) ) {
+    if( u.can_consume( liquid ) ) {
         menu.addentry( -1, true, 'e', _( "Consume it" ) );
         actions.emplace_back( [&]() {
             // consume_item already consumes moves.
@@ -10157,37 +10055,47 @@ void game::plthrow(int pos)
     reenter_fullscreen();
 }
 
-bool game::plfire()
-{
-    if( u.has_effect( effect_relax_gas) ) {
+bool game::plfire_check( item &weapon, int &reload_time ) {
+    bool okay = true;
+    vehicle *veh = nullptr;
+    
+    if( u.has_effect( effect_relax_gas ) ) {
         if( one_in(5) ) {
-            add_msg(m_good, _("Your eyes steel, and you raise your weapon!"));
+            add_msg( m_good, _( "Your eyes steel, and you raise your weapon!" ) );
         } else {
             u.moves -= rng(2, 5) * 10;
-            add_msg(m_bad, _("You can't fire your weapon, it's too heavy..."));
+            add_msg( m_bad, _( "You can't fire your weapon, it's too heavy..." ) );
             return false;
         }
     }
-
-    if( u.weapon.is_gunmod() ) {
-        add_msg( m_info, _( "The %s must be attached to a gun, it can not be fired separately." ), u.weapon.tname().c_str() );
+    
+    if( weapon.is_gunmod() ) {
+        add_msg( m_info, 
+            _( "The %s must be attached to a gun, it can not be fired separately." ), 
+            weapon.tname().c_str() );
         return false;
     }
 
-    auto gun = u.weapon.gun_current_mode();
+    auto gun = weapon.gun_current_mode();
 
+    // check that a valid mode was returned and we are able to use it
     if( !( gun && u.can_use( *gun ) ) ) {
-        return false; // check a valid mode was returned and we are able to use it
-    }
-
-    vehicle *veh = m.veh_at(u.pos());
-    if( veh != nullptr && veh->player_in_control( u ) && gun->is_two_handed( u ) ) {
-        add_msg(m_info, _("You need a free arm to drive!"));
+        add_msg( m_info, _( "You can no longer fire." ) );
         return false;
     }
 
-    int reload_time = 0;
+    veh = m.veh_at( u.pos() );
+    if( veh != nullptr && veh->player_in_control( u ) && gun->is_two_handed( u ) ) {
+        add_msg( m_info, _( "You need a free arm to drive!" ) );
+        return false;
+    }
+    
     if( !gun.melee() ) {
+        
+        if( !weapon.is_gun() ) {
+            return false;
+        }
+        
         if( gun->has_flag( "FIRE_TWOHAND" ) && ( !u.has_two_arms() || u.worn_with_flag( "RESTRICT_HANDS" ) ) ) {
             add_msg( m_info, _( "You need two free hands to fire your %s." ), gun->tname().c_str() );
             return false;
@@ -10196,19 +10104,22 @@ bool game::plfire()
         if( gun->has_flag( "RELOAD_AND_SHOOT" ) && !gun->ammo_remaining() ) {
             item::reload_option opt = u.select_ammo( *gun );
             if( !opt ) {
-                return false; // menu cancelled
+                // Menu cancelled
+                return false;
             }
 
             reload_time += opt.moves();
+            
             if( !gun->reload( u, std::move( opt.ammo ), 1 ) ) {
-                return false; // unable to reload
+                // Reload not allowed
+                return false;
             }
 
             // Burn 2x the strength required to fire in stamina.
             u.mod_stat( "stamina", gun->type->min_str * -2 );
 
             // At low stamina levels, firing starts getting slow.
-            int sta_percent = (100 * u.stamina) / u.get_stamina_max();
+            int sta_percent = ( 100 * u.stamina ) / u.get_stamina_max();
             reload_time += ( sta_percent < 25 ) ? ( ( 25 - sta_percent ) * 2 ) : 0;
 
             refresh_all();
@@ -10216,7 +10127,7 @@ bool game::plfire()
 
         if( !gun->ammo_sufficient() && !gun->has_flag("RELOAD_AND_SHOOT") ) {
             if( !gun->ammo_remaining() ) {
-                add_msg(m_info, _("You need to reload!"));
+                add_msg( m_info, _( "You need to reload!" ) );
             } else {
                 add_msg( m_info, _( "Your %s needs %i charges to fire!" ), gun->tname().c_str(), gun->ammo_required() );
             }
@@ -10224,8 +10135,8 @@ bool game::plfire()
         }
 
         if( gun->get_gun_ups_drain() > 0 ) {
-            const int ups_drain       = gun->get_gun_ups_drain();
-            const int adv_ups_drain   = std::max( 1, ups_drain * 3 / 5 );
+            const int ups_drain = gun->get_gun_ups_drain();
+            const int adv_ups_drain = std::max( 1, ups_drain * 3 / 5 );
 
             if( !( u.has_charges( "UPS_off", ups_drain ) ||
                    u.has_charges( "adv_UPS_off", adv_ups_drain ) ||
@@ -10239,29 +10150,61 @@ bool game::plfire()
 
         if( gun->has_flag( "MOUNTED_GUN" ) ) {
             int vpart = -1;
-            vehicle *veh = m.veh_at( u.pos(), vpart );
-            if( !m.has_flag_ter_or_furn( "MOUNTABLE", u.pos() ) &&
-                (veh == NULL || veh->part_with_feature(vpart, "MOUNTABLE") < 0)) {
+            veh = m.veh_at( u.pos(), vpart );
+            bool v_mountable = ( veh && veh->part_with_feature( vpart, "MOUNTABLE" ) >= 0 );
+            bool t_mountable = m.has_flag_ter_or_furn( "MOUNTABLE", u.pos() );
+            if( !t_mountable && !v_mountable ) {
                 add_msg(m_info,
-                        _("You need to be standing near acceptable terrain or furniture to use this weapon. A table, a mound of dirt, a broken window, etc."));
+                        _( "You must stand near acceptable terrain or furniture to use this weapon. A table, a mound of dirt, a broken window, etc." ) );
                 return false;
             }
         }
     }
+    
+    return okay;
+}
 
+bool game::plfire( item *weapon, int bp_cost, bool held )
+{
+    static int bio_power_cost = 0;
+    static item *cached_weapon = nullptr;
+    static bool held_weapon = true;
+    
+    if( weapon != nullptr ) {
+        // valid weapon, set the cached weapon and bp_cost to the current values.
+        cached_weapon = weapon;
+        bio_power_cost = bp_cost;
+        held_weapon = held;
+    } else if( !cached_weapon ) {
+        // if no weapon is cached, default to the player's weapon.
+        cached_weapon = &u.weapon;
+        held_weapon = true;
+    }
+
+    int reload_time = 0;
+    
+    // If we were wielding this weapon when we started aiming, make sure we still are.
+    bool lost_gun = ( held_weapon && &u.weapon != cached_weapon );
+    if( lost_gun || !plfire_check( *cached_weapon, reload_time ) ) {
+        bio_power_cost = 0;
+        return false;
+    }
+
+    auto gun = cached_weapon->gun_current_mode();
     int range = gun.melee() ? gun.qty : u.gun_engagement_range( *gun, player::engagement::maximum );
 
     temp_exit_fullscreen();
     m.draw( w_terrain, u.pos() );
 
     target_mode tmode = gun.melee() ? TARGET_MODE_REACH : TARGET_MODE_FIRE;
-    std::vector<tripoint> trajectory = pl_target_ui( tmode, &u.weapon, range );
+    std::vector<tripoint> trajectory = pl_target_ui( tmode, cached_weapon, range );
 
-    if (trajectory.empty()) {
-        if( gun->has_flag( "RELOAD_AND_SHOOT" ) && u.activity.id() != activity_id( "ACT_AIM" ) ) {
+    if( trajectory.empty() ) {
+        bool not_aiming = u.activity.id() != activity_id( "ACT_AIM" );
+        if( not_aiming && gun->has_flag( "RELOAD_AND_SHOOT" ) ) {
             const auto previous_moves = u.moves;
             unload( *gun );
-            // Give back time for unloading as essentially nothing has been done at all.
+            // Give back time for unloading as essentially nothing has been done.
             // Note that reload_time has not been applied either.
             u.moves = previous_moves;
         }
@@ -10281,8 +10224,14 @@ bool game::plfire()
         // @todo add check for TRIGGERHAPPY
         res = u.fire_gun( trajectory.back(), gun.qty, *gun );
     }
+    
+    if( res && bio_power_cost ) {
+        u.charge_power( -bio_power_cost );
+        bio_power_cost = 0;
+    }
 
     reenter_fullscreen();
+    
     return res;
 }
 
@@ -10404,9 +10353,12 @@ void game::butcher()
         }
 
         if( first_item_without_tools != nullptr ) {
+            std::string err;
             add_msg( m_info, _("You don't have the necessary tools to disassemble any items here.") );
             // Just for the "You need x to disassemble y" messages
-            u.can_disassemble( *first_item_without_tools, crafting_inv, true );
+            if( !u.can_disassemble( *first_item_without_tools, crafting_inv, &err ) ) {
+                add_msg( m_info, "%s", err.c_str() );
+            }
         }
         return;
     }
@@ -10568,7 +10520,7 @@ void game::eat(int pos)
         if( it.typeId() == "1st_aid" ) {
             return false; // temporary fix for #12991
         }
-        return it.made_of( SOLID ) && (it.is_food( &u ) || it.is_food_container( &u ) );
+        return it.made_of( SOLID ) && u.can_consume( it );
     }, _( "Consume item" ), 1, _( "You have nothing to consume." ) );
 
     item *it = item_loc.get_item();
@@ -11083,7 +11035,15 @@ void game::pldrive(int x, int y)
         u.moves -= std::max( cost, u.get_speed() / 3 + 1 );
     }
 
-    veh->cruise_thrust( -y * 1000 );
+    if( y != 0 ) {
+        int thr_amount = 10 * 100;
+        if( veh->cruise_on ) {
+            veh->cruise_thrust( -y * thr_amount );
+        } else {
+            veh->thrust( -y );
+            u.moves = std::min( u.moves, 0 );
+        }
+    }
 
     // @todo Actually check if we're on land on water (or disable water-skidding)
     if( veh->skidding && ( veh->valid_wheel_config( false ) || veh->valid_wheel_config( true ) ) ) {
@@ -13835,7 +13795,7 @@ void game::display_scent()
     draw_ter();
     scent.draw( w_terrain, div * 2, u.pos() + u.view_offset );
     wrefresh(w_terrain);
-    getch();
+    inp_mngr.wait_for_any_key();
 }
 
 void game::init_autosave()
@@ -13922,7 +13882,7 @@ void intro()
                                                        "make the terminal just a smidgen taller?"),
                            minWidth, minHeight, maxx, maxy);
         }
-        wgetch(tmp);
+        inp_mngr.wait_for_any_key();
         getmaxyx(stdscr, maxy, maxx);
     }
     werase(tmp);
@@ -13936,7 +13896,7 @@ void intro()
               "characters (e.g. empty boxes or question marks). You have been warned.");
         fold_and_print(tmp, 0, 0, maxx, c_white, unicode_error_msg, minWidth, minHeight, maxx, maxy);
         wrefresh(tmp);
-        wgetch(tmp);
+        inp_mngr.wait_for_any_key();
         werase(tmp);
     }
 #endif
@@ -13972,7 +13932,7 @@ void intro()
           );
     fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
     wrefresh(tmp);
-    wgetch(tmp);
+    inp_mngr.wait_for_any_key();
     werase(tmp);
 #endif
 

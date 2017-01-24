@@ -786,13 +786,11 @@ public:
  bool destroyed_at_zero_charges() const;
 // Most of the is_whatever() functions call the same function in our itype
  bool is_null() const; // True if type is NULL, or points to the null item (id == 0)
- bool is_food(player const*u) const;// Some non-food items are food to certain players
- bool is_food_container(player const*u) const;  // Ditto
+ bool is_comestible() const;
  bool is_food() const;                // Ignoring the ability to eat batteries, etc.
  bool is_food_container() const;      // Ignoring the ability to eat batteries, etc.
  bool is_ammo_container() const; // does this item contain ammo? (excludes magazines)
  bool is_medication() const;            // Is it a medication that only pretends to be food?
- bool is_medication_container() const;  // Does it contain medication that isn't actually food?
  bool is_bionic() const;
  bool is_magazine() const;
  bool is_ammo_belt() const;
@@ -821,18 +819,6 @@ public:
 
     /** Returns the total area of this wheel or 0 if it isn't one. */
     int wheel_area() const;
-
-    /**
-     *  How difficult is it to start the engine at specified temperature (celcius)
-     *  @return scalar factor [0.0 - 1.0] where a higher value represents increasing difficulty
-     */
-    double engine_start_difficulty( int temperature ) const;
-
-    /** Moves required to start engine at specified temperature (celcius) */
-    int engine_start_time( int temperature ) const;
-
-    /** battery charges (kJ) required to start at specified temperature (celcius) */
-    int engine_start_energy( int temperature ) const;
 
     /**
      * Can this item have given item/itype as content?
@@ -893,6 +879,10 @@ public:
  const itype* type;
  std::list<item> contents;
 
+        /**
+         * Return a contained item (if any and only one).
+         */
+        const item &get_contained() const;
         /**
          * Unloads the item's contents.
          * @param c Character who receives the contents.
@@ -1455,6 +1445,15 @@ public:
          * Does it require gunsmithing tools to repair.
          */
         bool is_firearm() const;
+        /*@}*/
+
+        /**
+         * @name Vehicle parts
+         *
+         *@{*/
+
+        /** for combustion engines the displacement (cc) */
+        int engine_displacement() const;
         /*@}*/
 
         /**
