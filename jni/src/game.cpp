@@ -13902,37 +13902,39 @@ void intro()
 #endif
 
 #if __ANDROID__
-    const char *android_msg =
-         //------------------------------------------------------------------------------
-        _("Welcome to the unofficial Android port of Cataclysm: Dark Days Ahead!\n"
-          " \n"
-          "Touch controls:\n"
-          "Swipe:                Directional input (menus/player movement etc.)\n"
-          "Swipe (hold):         Repeat input (slide to adjust direction on the fly)\n"
-          "                                   (slide further to go faster)\n"
-          "Tap:                  Confirm selection (menu) or Wait one turn (in-game)\n"
-          "Tap (hold):           Repeat input (eg. wait several turns)\n"
-          "Double-tap:           Cancel/Back\n"
-          "Back button:          Show/hide virtual keyboard\n"
-          "Back button (hold):   Show/hide keyboard shortcuts\n"
-          "Pinch:                Zoom in/out\n"
-          " \n"
-          "Tips:\n"
-          "- At the bottom of the screen you will sometimes see keyboard shortcuts.\n"
-          "- Many screens within the game already have convenient shortcuts assigned,\n"
-          "  but as you play, typing a key will add it to the shortcuts for that screen.\n"
-          "- Remove a shortcut by flicking up on it. Hold it down to see help text.\n"
-          "- You can show/hide keyboard shortcuts by holding the Back button.\n"
-          "- Adjust terminal size under Settings > Options > Graphics (req's restart).\n"
-          "- Android-specific options live under Settings > Options > Android.\n"
-          "- It is strongly recommended to use an SSH-friendly virtual keyboard,\n"
-          "  such as \"Hacker's Keyboard\" on the Google Play store.\n"
-          "- Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"
-          );
-    fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
-    wrefresh(tmp);
-    inp_mngr.wait_for_any_key();
-    werase(tmp);
+    if (!get_option<bool>("ANDROID_SKIP_SPLASH")) {
+        const char *android_msg =
+             //------------------------------------------------------------------------------
+            _("Welcome to the unofficial Android port of Cataclysm: Dark Days Ahead!\n"
+              " \n"
+              "Touch controls:\n"
+              "Swipe:                Directional input (menus/player movement etc.)\n"
+              "Swipe (hold):         Repeat input (slide to adjust direction on the fly)\n"
+              "                                   (slide further to go faster)\n"
+              "Tap:                  Confirm selection (menu) or Wait one turn (in-game)\n"
+              "Tap (hold):           Repeat input (eg. wait several turns)\n"
+              "Double-tap:           Cancel/Back\n"
+              "Back button:          Show/hide virtual keyboard\n"
+              "Back button (hold):   Show/hide keyboard shortcuts\n"
+              "Pinch:                Zoom in/out\n"
+              " \n"
+              "Tips:\n"
+              "- At the bottom of the screen you will sometimes see keyboard shortcuts.\n"
+              "- Many screens within the game already have convenient shortcuts assigned,\n"
+              "  but as you play, typing a key will add it to the shortcuts for that screen.\n"
+              "- Remove a shortcut by flicking up on it. Hold it down to see help text.\n"
+              "- You can show/hide keyboard shortcuts by holding the Back button.\n"
+              "- Adjust terminal size under Settings > Options > Graphics (req's restart).\n"
+              "- Android-specific options live under Settings > Options > Android.\n"
+              "- It is strongly recommended to use an SSH-friendly virtual keyboard,\n"
+              "  such as \"Hacker's Keyboard\" on the Google Play store.\n"
+              "- Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"
+              );
+        fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
+        wrefresh(tmp);
+        inp_mngr.wait_for_any_key();
+        werase(tmp);        
+    }
 #endif
 
     wrefresh(tmp);

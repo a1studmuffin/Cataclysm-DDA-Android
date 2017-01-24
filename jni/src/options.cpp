@@ -781,6 +781,10 @@ void options_manager::init()
         vPages.push_back(std::make_pair("world_default", _("World Defaults")));
     }
 
+#ifdef __ANDROID__
+    vPages.push_back(std::make_pair("android", _("Android")));
+#endif
+
     std::string tileset_names;
     tileset_names = build_tilesets_list(); //get the tileset names and set the optionNames
 
@@ -1466,6 +1470,74 @@ void options_manager::init()
         _("If true, NPCs won't need to eat or drink and will only get tired enough to sleep, not to get penalties."),
         false, COPT_ALWAYS_HIDE
         );
+
+#ifdef __ANDROID__
+    add("ANDROID_SKIP_SPLASH", "android", _("Skip welcome screen"),
+        _("If true, skips the Android welcome screen on app load."),
+        false
+        );
+
+    add("ANDROID_QUICKSAVE", "android", _("Quicksave on app lose focus"),
+        _("EXPERIMENTAL: If true, quicksave whenever the app loses focus (screen locked, app moved into background etc.) Seems to work, but in theory data loss may occur if using a menu during quicksave."),
+        false
+        );
+
+    add("ANDROID_AUTO_KEYBOARD", "android", _("Auto-manage virtual keyboard"),
+        _("If true, automatically show/hide the virtual keyboard when necessary based on context. Turn this off if using a physical keyboard."),
+        true
+        );
+
+    add("ANDROID_HIDE_HOLDS", "android", _("Hide shortcuts during touch holds"),
+        _("If true, hides on-screen keyboard shortcuts during touch holds. Helps keep the view uncluttered while travelling long distances and navigating menus."),
+        true
+        );
+
+    add("ANDROID_SHORTCUT_PERSISTENCE", "android", _("Shortcuts persistence"),
+        _("If true, shortcuts are saved/restored with each save game. If false, shortcuts reset to defaults every time a world is loaded."),
+        true
+        );
+
+    add("ANDROID_SHORTCUT_POSITION", "android", _("Shortcuts position"),
+        _("Switch between shortcuts on the left or on the right side."),
+        "left,right", "right"
+        );
+
+    add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (bg)"),
+        _("The background opacity of on-screen keyboard shortcuts."),
+        0, 100, 75
+        );
+
+    add("ANDROID_SHORTCUT_OPACITY_SHADOW", "android", _("Shortcut opacity (shadow)"),
+        _("The shadow opacity of on-screen keyboard shortcuts."),
+        0, 100, 100
+        );
+
+    add("ANDROID_SHORTCUT_OPACITY_FG", "android", _("Shortcut opacity (fg)"),
+        _("The foreground opacity of on-screen keyboard shortcuts."),
+        0, 100, 100
+        );
+
+    add("ANDROID_SHORTCUT_BORDER", "android", _("Shortcut border"),
+        _("The border of each on-screen keyboard shortcut in pixels. ."),
+        0, 16, 0
+        );
+
+    add("ANDROID_SHORTCUT_WIDTH_MIN", "android", _("Shortcut width (min)"),
+        _("The minimum width of each on-screen keyboard shortcut in pixels. Only relevant when lots of shortcuts are visible at once."),
+        50, 1000, 50
+        );
+
+    add("ANDROID_SHORTCUT_WIDTH_MAX", "android", _("Shortcut width (max)"),
+        _("The maximum width of each on-screen keyboard shortcut in pixels."),
+        50, 1000, 160
+        );
+
+    add("ANDROID_SHORTCUT_HEIGHT", "android", _("Shortcut height"),
+        _("The height of each on-screen keyboard shortcut in pixels."),
+        50, 1000, 130
+        );
+
+#endif
 
     for (unsigned i = 0; i < vPages.size(); ++i) {
         mPageItems[i].resize(mOptionsSort[vPages[i].first]);

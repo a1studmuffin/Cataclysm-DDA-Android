@@ -116,7 +116,11 @@ std::string current_soundpack_path = "";
  */
 class Font {
 public:
-    Font(int w, int h) : fontwidth(w), fontheight(h) { }
+    Font(int w, int h) : 
+#ifdef __ANDROID__
+    opacity(1.0f),
+#endif
+    fontwidth(w), fontheight(h) { }
     virtual ~Font() { }
     /**
      * Draw character t at (x,y) on the screen,
@@ -129,6 +133,9 @@ public:
 
     static std::unique_ptr<Font> load_font(const std::string &typeface, int fontsize, int fontwidth, int fontheight);
 public:
+#ifdef __ANDROID__
+    float opacity; // 0-1
+#endif
     // the width of the font, background is always this size
     int fontwidth;
     // the height of the font, background is always this size
@@ -625,9 +632,17 @@ void CachedTTFFont::OutputChar(std::string ch, int const x, int const y, unsigne
         return;
     }
     SDL_Rect rect {x, y, value.width, fontheight};
+#ifdef __ANDROID__
+    if (opacity != 1.0f)
+        SDL_SetTextureAlphaMod(value.texture, opacity * 255.0f);
+#endif
     if (SDL_RenderCopy( renderer, value.texture, nullptr, &rect)) {
         dbg(D_ERROR) << "SDL_RenderCopy failed: " << SDL_GetError();
     }
+#ifdef __ANDROID__
+    if (opacity != 1.0f)
+        SDL_SetTextureAlphaMod(value.texture, 255);
+#endif
 }
 
 void BitmapFont::OutputChar(std::string ch, int x, int y, unsigned char color)
@@ -650,9 +665,17 @@ void BitmapFont::OutputChar(long t, int x, int y, unsigned char color)
     src.h = fontheight;
     SDL_Rect rect;
     rect.x = x; rect.y = y; rect.w = fontwidth; rect.h = fontheight;
+#ifdef __ANDROID__
+    if (opacity != 1.0f)
+        SDL_SetTextureAlphaMod(ascii[color], opacity * 255);
+#endif
     if( SDL_RenderCopy( renderer, ascii[color], &src, &rect ) != 0 ) {
         dbg(D_ERROR) << "SDL_RenderCopy failed: " << SDL_GetError();
     }
+#ifdef __ANDROID__
+    if (opacity != 1.0f)
+        SDL_SetTextureAlphaMod(ascii[color], 255);
+#endif
 }
 
 #ifdef __ANDROID__
@@ -1294,17 +1317,16 @@ input_context touch_input_context;
 
 // given the active quick shortcuts, returns the dimensions of each quick shortcut button.
 void get_quick_shortcut_dimensions(quick_shortcuts_t& qsl, float& border, float& width, float& height) {
-    float device_scale = std::max(WindowWidth, WindowHeight) / 1920.0f; // scale against longest edge of device
-    border = std::floor(0.0f * device_scale); // authored at 1080p
-    width = 160.0f * device_scale; // authored at 1080p
-    float min_width = 48.0f * device_scale;
+    border = std::floor(get_option<int>( "ANDROID_SHORTCUT_BORDER" ));
+    width = get_option<int>( "ANDROID_SHORTCUT_WIDTH_MAX" );
+    float min_width = std::min(get_option<int>( "ANDROID_SHORTCUT_WIDTH_MIN" ), get_option<int>( "ANDROID_SHORTCUT_WIDTH_MAX" ));
     if (width * qsl.size() > WindowWidth) {
         width *= WindowWidth / (width * qsl.size());
         if (width < min_width)
             width = min_width;
     }
     width = std::floor(width);
-    height = std::floor(126.0f * device_scale); // authored at 1080p
+    height = std::floor(get_option<int>( "ANDROID_SHORTCUT_HEIGHT" ));
 }
 
 // Returns the quick shortcut (if any) under the finger's current position, or finger down position if down == true
@@ -1323,11 +1345,18 @@ input_event* get_quick_shortcut_under_finger(bool down = false) {
         return NULL;
 
     int i = 0;
+    bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
     float finger_x = down ? finger_down_x : finger_curr_x;
     for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it) {
         i++;
+        if (shortcut_right) {
+            if (finger_x > WindowWidth - (i * width))
+                return &(*it);
+        }
+        else {
         if (finger_x < i * width)
             return &(*it);
+        }
     }
 
     return NULL;
@@ -1370,19 +1399,31 @@ void reorder_quick_shortcut(quick_shortcuts_t& qsl, long key, bool back) {
 void reorder_quick_shortcuts(quick_shortcuts_t& qsl) {
         // Do some manual reordering to make transitions between input contexts more consistent
         // Desired order of keys: < > BACKTAB TAB PPAGE NPAGE . . . . ?
-        reorder_quick_shortcut(qsl, KEY_NPAGE, false);
-        reorder_quick_shortcut(qsl, KEY_PPAGE, false); // paging control
-        reorder_quick_shortcut(qsl, '\t', false);
-        reorder_quick_shortcut(qsl, KEY_BTAB, false); // secondary tabs after that
-        reorder_quick_shortcut(qsl, '>', false);
-        reorder_quick_shortcut(qsl, '<', false); // tabs next
-        reorder_quick_shortcut(qsl, '?', false); // help at the start
+        bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
+        if (shortcut_right) {
+            reorder_quick_shortcut(qsl, KEY_PPAGE, false); // paging control
+            reorder_quick_shortcut(qsl, KEY_NPAGE, false);
+            reorder_quick_shortcut(qsl, KEY_BTAB, false); // secondary tabs after that
+            reorder_quick_shortcut(qsl, '\t', false);
+            reorder_quick_shortcut(qsl, '<', false); // tabs next
+            reorder_quick_shortcut(qsl, '>', false);
+            reorder_quick_shortcut(qsl, '?', false); // help at the start
+        }
+        else {
+            reorder_quick_shortcut(qsl, KEY_NPAGE, false);
+            reorder_quick_shortcut(qsl, KEY_PPAGE, false); // paging control
+            reorder_quick_shortcut(qsl, '\t', false);
+            reorder_quick_shortcut(qsl, KEY_BTAB, false); // secondary tabs after that
+            reorder_quick_shortcut(qsl, '>', false);
+            reorder_quick_shortcut(qsl, '<', false); // tabs next
+            reorder_quick_shortcut(qsl, '?', false); // help at the start
+        }
 }
 
 void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
-        (!is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= FINGER_INITIAL_DELAY)) // player is swipe + holding in a direction
+        (get_option<bool>("ANDROID_HIDE_HOLDS") && !is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= FINGER_INITIAL_DELAY)) // player is swipe + holding in a direction
         return;
 
     std::string& category = touch_input_context.get_category();
@@ -1429,9 +1470,11 @@ void draw_quick_shortcuts() {
                 qsl.push_back(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
             }
         }
-        reorder_quick_shortcuts(qsl);
     }
-    
+
+    bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
+    reorder_quick_shortcuts(qsl);
+
     float border, width, height;
     get_quick_shortcut_dimensions(qsl, border, width, height);
     input_event* hovered_quick_shortcut = get_quick_shortcut_under_finger();
@@ -1458,32 +1501,47 @@ void draw_quick_shortcuts() {
             if (hint_text == "ERROR" || hint_text.empty())
                 show_hint = false;
         }
-        rect = { (int)(i * width), (int)(WindowHeight - height), (int)(width - border*2), (int)(height - border*2) };
+        if (shortcut_right)
+            rect = { WindowWidth - (int)((i+1) * width + border), (int)(WindowHeight - height), (int)(width - border*2), (int)(height) };
+        else
+            rect = { (int)(i * width + border), (int)(WindowHeight - height), (int)(width - border*2), (int)(height) };
         if (hovered)
             SDL_SetRenderDrawColor( renderer, 0, 0, 0, 255 );
         else
-            SDL_SetRenderDrawColor( renderer, 0, 0, 0, 192 );
+            SDL_SetRenderDrawColor( renderer, 0, 0, 0, get_option<int>("ANDROID_SHORTCUT_OPACITY_BG")*0.01f*255.0f );
         SDL_SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_BLEND );
         SDL_RenderFillRect( renderer, &rect );
         if (hovered) {
             // draw a second button hovering above the first one
-            rect = { (int)(i * width), (int)(WindowHeight - height * 2.2f), (int)(width - border*2), (int)(height - border*2) };
+            if (shortcut_right)
+                rect = { WindowWidth - (int)((i+1) * width + border), (int)(WindowHeight - height * 2.2f), (int)(width - border*2), (int)(height) };
+            else
+                rect = { (int)(i * width + border), (int)(WindowHeight - height * 2.2f), (int)(width - border*2), (int)(height) };
             SDL_SetRenderDrawColor( renderer, 0, 0, 196, 255 );
             SDL_RenderFillRect( renderer, &rect );
 
             if (show_hint) {
                 // draw a backdrop for the hint text
                 rect = { 0, (int)((WindowHeight - height)*0.5f), (int)WindowWidth, (int)height };
-                SDL_SetRenderDrawColor( renderer, 0, 0, 0, 192 );
+                SDL_SetRenderDrawColor( renderer, 0, 0, 0, get_option<int>("ANDROID_SHORTCUT_OPACITY_BG")*0.01f*255.0f );
                 SDL_RenderFillRect( renderer, &rect );                
             }
         }
         SDL_SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_NONE );
         SDL_RenderSetScale( renderer, text_scale, text_scale);
-        font->OutputChar( text, ((i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale, (WindowHeight - (height + font->fontheight * text_scale) * 0.5f) / text_scale, 15 );
+        int text_x, text_y;
+        if (shortcut_right)
+            text_x = (WindowWidth - (i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale;
+        else
+            text_x = ((i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale;
+        text_y = (WindowHeight - (height + font->fontheight * text_scale) * 0.5f) / text_scale;
+        font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_SHADOW")*0.01f;
+        font->OutputChar( text, text_x+1, text_y+1, 0 );
+        font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_FG")*0.01f;
+        font->OutputChar( text, text_x, text_y, 15 );
         if (hovered) {
             // draw a second button hovering above the first one
-            font->OutputChar( text, ((i + 0.5f) * width - (font->fontwidth * text.length()) * text_scale * 0.5f) / text_scale, (-height*2.2f / text_scale) + (WindowHeight - (-height + font->fontheight * text_scale) * 0.5f) / text_scale, 15 );
+            font->OutputChar( text, text_x, text_y - (height*1.2f / text_scale), 15 );
             if (show_hint) {
                 // draw hint text
                 text_scale = default_text_scale;
@@ -1492,9 +1550,15 @@ void draw_quick_shortcuts() {
                 if (WindowWidth * safe_margin < font->fontwidth * text_scale * hint_text.length())
                     text_scale *= (WindowWidth * safe_margin) / (font->fontwidth * text_scale * hint_text.length()); // scale to fit comfortably
                 SDL_RenderSetScale( renderer, text_scale, text_scale);
-                font->OutputChar( hint_text, (WindowWidth - (font->fontwidth * text_scale * hint_text.length())) * 0.5f / text_scale, (WindowHeight - font->fontheight * text_scale) * 0.5f / text_scale, 15 );
+                font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_SHADOW")*0.01f;
+                text_x = (WindowWidth - ((font->fontwidth  * hint_text.length()) * text_scale)) * 0.5f / text_scale;
+                text_y = (WindowHeight - font->fontheight * text_scale) * 0.5f / text_scale;
+                font->OutputChar( hint_text, text_x+1, text_y+1, 0 );
+                font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_FG")*0.01f;
+                font->OutputChar( hint_text, text_x, text_y, 15 );
             }
         }
+        font->opacity = 1.0f;
         SDL_RenderSetScale( renderer, 1.0f, 1.0f);
         i++;
         if ((i+1) * width > WindowWidth)
@@ -1690,7 +1754,7 @@ void CheckMessages()
                 // but it seems to work so far, and the alternative is the player losing their progress as the app is likely
                 // to be destroyed pretty quickly when it goes out of focus due to memory usage.
                 case SDL_WINDOWEVENT_FOCUS_LOST:
-                    if (world_generator && world_generator->active_world && g && g->uquit == QUIT_NO) 
+                    if (world_generator && world_generator->active_world && g && g->uquit == QUIT_NO && get_option<bool>("ANDROID_QUICKSAVE")) 
                         g->quicksave();
                     break;
                 // SDL sends a window size changed event whenever the screen rotates orientation
@@ -1743,14 +1807,14 @@ void CheckMessages()
                     last_input = input_event(lc, CATA_INPUT_KEYBOARD);
 #ifdef __ANDROID__
                     if (!is_string_input(touch_input_context)) {
-                        SDL_StopTextInput();
+                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                            SDL_StopTextInput();
 
                         // add a quick shortcut
                         if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
                             quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
                             qsl.remove(last_input);
                             qsl.push_front(last_input);
-                            reorder_quick_shortcuts(qsl);
                             //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
                             //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
                         }
@@ -1766,7 +1830,7 @@ void CheckMessages()
                 if (ev.key.keysym.sym == SDLK_AC_BACK) {
                     if (ticks - ac_back_down_time <= FINGER_INITIAL_DELAY) {
                         // NOTE: We don't receive a key up event if the keyboard was already visible (yay SDL/android).
-                        if (!SDL_IsTextInputActive())
+                        if (!SDL_IsTextInputActive() && get_option<bool>("ANDROID_AUTO_KEYBOARD"))
                             SDL_StartTextInput();
                     }
                     ac_back_down_time = 0;
@@ -1791,12 +1855,12 @@ void CheckMessages()
 
 #ifdef __ANDROID__
                     if (!is_string_input(touch_input_context)) {
-                        SDL_StopTextInput();
+                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                            SDL_StopTextInput();
 
                         quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
                         qsl.remove(last_input);
                         qsl.push_front(last_input);
-                        reorder_quick_shortcuts(qsl);
                         //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
                         //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
                     }
