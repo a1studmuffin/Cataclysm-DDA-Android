@@ -1492,6 +1492,11 @@ void options_manager::init()
         true
         );
 
+    add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-add gameplay shortcuts"),
+        _("If true, common in-game shortcuts are added automatically when needed (similar to Action Menu behavior)."),
+        true
+        );
+
     add("ANDROID_SHORTCUT_PERSISTENCE", "android", _("Shortcuts persistence"),
         _("If true, shortcuts are saved/restored with each save game. If false, shortcuts reset to defaults every time a world is loaded."),
         true

@@ -55,6 +55,7 @@
 
 #ifdef __ANDROID__
 #include "worldfactory.h"
+#include "action.h"
 #endif
 
 #define dbg(x) DebugLog((DebugLevel)(x),D_SDL) << __FILE__ << ":" << __LINE__ << ": "
@@ -1299,7 +1300,7 @@ static bool is_quick_shortcut_touch = false; // did this touch start on a quick 
 static bool quick_shortcuts_enabled = true;
 static bool quick_shortcuts_toggle_handled = false;
 static const unsigned long FINGER_INITIAL_DELAY = 300; // wait this long before repeating inputs for finger holds
-static const unsigned long FINGER_FLICK_DELAY = 150; // within this time is considered a flick
+static const unsigned long FINGER_FLICK_DELAY = 200; // within this time is considered a flick
 static const unsigned long FINGER_REPEAT_DELAY_MIN = 100; // repeat input every X milliseconds - min
 static const unsigned long FINGER_REPEAT_DELAY_MAX = 400; // repeat input every X milliseconds - max
 static const float FINGER_REPEAT_DELAY_RANGE = 0.25f; // percentage of screen width to go from max -> min repeat delay
@@ -1420,6 +1421,22 @@ void reorder_quick_shortcuts(quick_shortcuts_t& qsl) {
         }
 }
 
+long choose_best_key_for_action(const std::string& action_id, const std::string& category) {
+    const std::vector<input_event>& events = inp_mngr.get_input_for_action( action_id, category );
+    long best_key = -1;
+    for( const auto &events_event : events ) {
+        if( events_event.type == CATA_INPUT_KEYBOARD && events_event.sequence.size() == 1 ) {
+            bool is_ascii_char = isprint( events_event.sequence.front() ) && events_event.sequence.front() < 0xFF;
+            bool is_best_ascii_char = best_key >= 0 && isprint( best_key ) && best_key < 0xFF;
+            if ( best_key < 0 || (is_ascii_char && !is_best_ascii_char) ) {
+                //LOGD("\tSelecting new best_key: old best_key: %ld isprint:%d new best_key: %ld isprint:%d", best_key, isprint(best_key), events_event.sequence.front(), isprint(events_event.sequence.front()) );
+                best_key = events_event.sequence.front();
+            }
+        }
+    }
+    return best_key;
+}
+
 void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
@@ -1447,18 +1464,7 @@ void draw_quick_shortcuts() {
                 if (ignore_action_for_quick_shortcuts(action_id))
                     continue;
 
-                const std::vector<input_event>& events = inp_mngr.get_input_for_action( action_id, category );
-                long best_key = -1;
-                for( const auto &events_event : events ) {
-                    if( events_event.type == CATA_INPUT_KEYBOARD && events_event.sequence.size() == 1 ) {
-                        bool is_ascii_char = isprint( events_event.sequence.front() ) && events_event.sequence.front() < 0xFF;
-                        bool is_best_ascii_char = best_key >= 0 && isprint( best_key ) && best_key < 0xFF;
-                        if ( best_key < 0 || (is_ascii_char && !is_best_ascii_char) ) {
-                            //LOGD("\tSelecting new best_key: old best_key: %ld isprint:%d new best_key: %ld isprint:%d", best_key, isprint(best_key), events_event.sequence.front(), isprint(events_event.sequence.front()) );
-                            best_key = events_event.sequence.front();
-                        }
-                    }
-                }
+                long best_key = choose_best_key_for_action(action_id, category);
                 if (best_key >= 0)
                     qsl.push_back(input_event(best_key, CATA_INPUT_KEYBOARD));
             }            
@@ -1705,8 +1711,101 @@ void CheckMessages()
             touch_input_context = *new_input_context;
     }
 
+    bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
+    quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+
     // Don't do this logic if we already need an update, otherwise we're likely to overload the game with too much input on hold repeat events
     if (!needupdate) {
+
+        // Check action weightings and auto-add any immediate-surrounding actions as quick shortcuts
+        // This code is based heavily off action.cpp handle_action_menu() which puts common shortcuts at the top
+        if (is_default_mode && get_option<bool>("ANDROID_SHORTCUT_AUTOADD")) {
+            static int last_turn = -1;
+            if (last_turn != calendar::turn) {
+                last_turn = calendar::turn;
+
+                std::list<action_id> actions;
+                
+                // Check if we're in a potential combat situation, if so, sort a few actions to the top.
+                if( !g->u.get_hostile_creatures( 60 ).empty() ) {
+                    // Only prioritize movement options if we're not driving.
+                    if( !g->u.controlling_vehicle ) {
+                        actions.push_back(ACTION_TOGGLE_MOVE);
+                    }
+                    // Only prioritize fire weapon options if we're wielding a ranged weapon.
+                    if( g->u.weapon.is_gun() || g->u.weapon.has_flag( "REACH_ATTACK" ) ) {
+                        actions.push_back(ACTION_FIRE);
+                    }
+                }
+
+                // If we're already running, make it simple to toggle running to off.
+                if( g->u.move_mode != "walk" ) {
+                    actions.push_back(ACTION_TOGGLE_MOVE);
+                }
+
+                // Check if we're on a vehicle, if so, vehicle controls should be top.
+                {
+                    int veh_part = 0;
+                    vehicle *veh = NULL;
+
+                    veh = g->m.veh_at( g->u.pos(), veh_part );
+                    if( veh ) {
+                        actions.push_back(ACTION_CONTROL_VEHICLE);
+                    }
+                }
+
+                // Check if we can perform one of our actions on nearby terrain. If so,
+                // display that action at the top of the list.
+                for( int dx = -1; dx <= 1; dx++ ) {
+                    for( int dy = -1; dy <= 1; dy++ ) {
+                        int x = g->u.posx() + dx;
+                        int y = g->u.posy() + dy;
+                        int z = g->u.posz();
+                        const tripoint pos( x, y, z );
+                        if( dx != 0 || dy != 0 ) {
+                            // Check for actions that work on nearby tiles
+                            if( can_interact_at( ACTION_OPEN, pos ) ) {
+                                // don't bother with open since user can just walk into target
+                            }
+                            if( can_interact_at( ACTION_CLOSE, pos ) ) {
+                                actions.push_back(ACTION_CLOSE);
+                            }
+                            if( can_interact_at( ACTION_EXAMINE, pos ) ) {
+                                actions.push_back(ACTION_EXAMINE);
+                            }
+                        } else {
+                            // Check for actions that work on own tile only
+                            if( can_interact_at( ACTION_BUTCHER, pos ) ) {
+                                actions.push_back(ACTION_BUTCHER);
+                            }
+                            if( can_interact_at( ACTION_MOVE_UP, pos ) ) {
+                                actions.push_back(ACTION_MOVE_UP);
+                            }
+                            if( can_interact_at( ACTION_MOVE_DOWN, pos ) ) {
+                                actions.push_back(ACTION_MOVE_DOWN);
+                            }
+                        }
+                    }
+                }
+
+                // Check if we can't move because of safe mode - if so, add ability to ignore
+                if (g && !g->check_safe_mode_allowed(false)) {
+                    actions.push_back(ACTION_IGNORE_ENEMY);
+                    actions.push_back(ACTION_TOGGLE_SAFEMODE);
+                }
+
+                for(const auto& action : actions) {
+                    long best_key = choose_best_key_for_action(action_ident(action), touch_input_context.get_category());
+                    if (best_key >= 0) {
+                        input_event event = input_event(best_key, CATA_INPUT_KEYBOARD);
+                        bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
+                        if (!shortcut_exists)
+                            qsl.push_front(event);
+                            needupdate = true;
+                    }
+                }
+            }
+        }
 
         // Toggle quick shortcuts on/off
         if (ac_back_down_time > 0 && ticks - ac_back_down_time > FINGER_INITIAL_DELAY) {
@@ -1730,7 +1829,7 @@ void CheckMessages()
         if (!is_quick_shortcut_touch && !is_two_finger_touch && last_tap_time > 0 && ticks - last_tap_time >= FINGER_INITIAL_DELAY) {
             // Single tap
             last_tap_time = ticks;
-            last_input = input_event((touch_input_context.get_category() == "DEFAULTMODE") ? '.' : '\n', CATA_INPUT_KEYBOARD);
+            last_input = input_event(is_default_mode ? '.' : '\n', CATA_INPUT_KEYBOARD);
             last_tap_time = 0;
             return;
         }
@@ -1812,7 +1911,6 @@ void CheckMessages()
 
                         // add a quick shortcut
                         if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
-                            quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
                             qsl.remove(last_input);
                             qsl.push_front(last_input);
                             //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
@@ -1970,7 +2068,7 @@ void CheckMessages()
                     else {
                         if (is_two_finger_touch) {
                             // handle zoom in/out
-                            if (touch_input_context.get_category() == "DEFAULTMODE") {
+                            if (is_default_mode) {
                                 float down_x = finger_down_x - second_finger_down_x;
                                 float down_y = finger_down_y - second_finger_down_y;
                                 float down_dist = (float)sqrtf(down_x*down_x + down_y*down_y);
