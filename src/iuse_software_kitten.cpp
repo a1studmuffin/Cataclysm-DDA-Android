@@ -3,13 +3,10 @@
 #include "output.h"
 #include "translations.h"
 #include "posix_time.h"
+#include "input.h"
 
 #include <cstdlib>  // Needed for rand()
 #include <iostream>
-
-#ifdef __ANDROID__
-#include "input.h"
-#endif
 
 #define EMPTY -1
 #define ROBOT 0
@@ -331,7 +328,8 @@ robot_finds_kitten::robot_finds_kitten(WINDOW *w)
     wrefresh(w);
     /* Now the fun begins. */
     int input = '.';
-    input = getch();
+    // TODO: use input context
+    input = inp_mngr.get_input_event().get_first_input();
 
     while (input != 'q' && input != 'Q' && input != 27 /*escape*/) {
         process_input(input, w);
@@ -350,7 +348,8 @@ robot_finds_kitten::robot_finds_kitten(WINDOW *w)
             old_y = robot.y;
         }
         wrefresh(w);
-        input = getch();
+        // TODO: use input context / rewrite loop so this is only called at one place
+        input = inp_mngr.get_input_event().get_first_input();
     }
 }
 
@@ -374,7 +373,7 @@ The game ends when robotfindskitten. Alternatively, you may end the game by hitt
 'q', 'Q' or the escape key."));
     fold_and_print(w, pos, 1, getmaxx(w) - 4, c_ltgray, _("Press any key to start."));
     wrefresh(w);
-    getch();
+    inp_mngr.wait_for_any_key();
 }
 
 void robot_finds_kitten::process_input(int input, WINDOW *w)
@@ -461,7 +460,8 @@ void robot_finds_kitten::process_input(int input, WINDOW *w)
             ret = true;
             int ech = input;
             do {
-                ech = getch ();
+                // TODO: use input context
+                ech = inp_mngr.get_input_event().get_first_input();
             } while ( ech == input );
         }
         break;

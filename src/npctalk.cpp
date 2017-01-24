@@ -3489,7 +3489,7 @@ int dialogue::choose_response( int const hilight_lines )
         }
         wrefresh( win );
         // TODO: input_context?
-        const long ch = getch();
+        const long ch = inp_mngr.get_input_event().get_first_input();
         switch( ch ) {
             case KEY_DOWN:
             case KEY_NPAGE:
@@ -3938,7 +3938,8 @@ TAB key to switch lists, letters to pick items, Enter to finalize, Esc to quit,\
             wrefresh(w_them);
             wrefresh(w_you);
         } // Done updating the screen
-        ch = getch();
+        // TODO: use input context
+        ch = inp_mngr.get_input_event().get_first_input();
         switch (ch) {
             case '\t':
                 focus_them = !focus_them;
@@ -3962,7 +3963,8 @@ TAB key to switch lists, letters to pick items, Enter to finalize, Esc to quit,\
                 mvwprintz(w_tmp, 1, 1, c_red, _("Examine which item?"));
                 draw_border(w_tmp);
                 wrefresh(w_tmp);
-                help = getch() - 'a';
+                // TODO: use input context
+                help = inp_mngr.get_input_event().get_first_input() - 'a';
                 werase(w_tmp);
                 delwin(w_tmp);
                 mvwprintz(w_head, 0, 0, c_white, header_message.c_str(), p.name.c_str());
@@ -4416,7 +4418,8 @@ enum consumption_result {
 // Returns true if we destroyed the item through consumption
 consumption_result try_consume( npc &p, item &it, std::string &reason )
 {
-    bool consuming_contents = it.is_food_container( &p );
+    // @todo Unify this with 'player::consume_item()'
+    bool consuming_contents = it.is_food_container();
     item &to_eat = consuming_contents ? it.contents.front() : it;
     const auto comest = to_eat.type->comestible.get();
     if( comest == nullptr ) {
@@ -4431,12 +4434,12 @@ consumption_result try_consume( npc &p, item &it, std::string &reason )
 
     // TODO: Make it not a copy+paste from player::consume_item
     int amount_used = 1;
-    if( comest->comesttype == "FOOD" || comest->comesttype == "DRINK" ) {
+    if( to_eat.is_food() ) {
         if( !p.eat( to_eat ) ) {
             reason = _("It doesn't look like a good idea to consume this...");
             return REFUSED;
         }
-    } else if (comest->comesttype == "MED") {
+    } else if( to_eat.is_medication() ) {
         if (comest->tool != "null") {
             bool has = p.has_amount( comest->tool, 1 );
             if( item::count_by_charges( comest->tool ) ) {
