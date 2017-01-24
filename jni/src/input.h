@@ -330,7 +330,7 @@ class input_context
             handling_coordinate_input( false ) {
 #ifdef __ANDROID__
                 input_context_stack.push_back(this);
-                LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
+                //LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
 #endif
             };
         // TODO: consider making the curses WINDOW an argument to the constructor, so that mouse input
@@ -339,7 +339,7 @@ class input_context
             category( category ), handling_coordinate_input( false ) {
 #ifdef __ANDROID__
                 input_context_stack.push_back(this);
-                LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
+                //LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
 #endif
             };
 
@@ -347,7 +347,7 @@ class input_context
         virtual ~input_context()
         {
             input_context_stack.remove(this);
-            LOGD("input_context: Removed %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (int)input_context_stack.size() > 0 ? (*--input_context_stack.end())->category.c_str() : "<empty>");
+            //LOGD("input_context: Removed %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (int)input_context_stack.size() > 0 ? (*--input_context_stack.end())->category.c_str() : "<empty>");
         }
 
         // hack to allow creating manual keybindings for getch() instances, uimenus etc. that don't use an input_context outside of the Android version
