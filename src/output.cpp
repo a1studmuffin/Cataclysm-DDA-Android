@@ -810,7 +810,7 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
         std::set<long> ch_code_blacklist )
 {
 #ifdef __ANDROID__
-    if (!draw_only && loop)
+    if (!draw_only && loop && get_option<bool>("ANDROID_AUTO_KEYBOARD"))
         SDL_StartTextInput();
 #endif
 
@@ -925,7 +925,8 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
 
         if( ch == KEY_ESCAPE ) {
 #ifdef __ANDROID__
-            SDL_StopTextInput();
+            if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                SDL_StopTextInput();
 #endif
 
             return "";
@@ -1033,7 +1034,8 @@ std::string string_input_win_from_context( WINDOW *w, input_context &ctxt, std::
                     }
                 }
 #ifdef __ANDROID__
-                SDL_StopTextInput();
+                if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                    SDL_StopTextInput();
 #endif
                 return ret.str();
             }
