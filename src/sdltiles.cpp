@@ -1075,7 +1075,7 @@ bool Font::draw_window( WINDOW *win, int offsetx, int offsety )
 
 #ifdef __ANDROID__
 			// BUGFIX: Prevents an occasional crash when viewing player info. This seems like it might be a cross-platform issue in the experimental build
-            if (fby >= framebuffer.size() || fbx >= framebuffer[fby].chars.size())
+            if (fby >= (int)framebuffer.size() || fbx >= (int)framebuffer[fby].chars.size())
                 continue;
 #endif
             cursecell &oldcell = framebuffer[fby].chars[fbx];
@@ -1364,21 +1364,21 @@ input_event* get_quick_shortcut_under_finger(bool down = false) {
 }
 
 // when pre-populating a quick shortcut list with defaults, ignore these actions (since they're all handleable by native touch operations)
-bool ignore_action_for_quick_shortcuts(const std::string& action_id) {
-   return (action_id == "UP"
-        || action_id == "DOWN"
-        || action_id == "LEFT"
-        || action_id == "RIGHT"
-        || action_id == "LEFTUP"
-        || action_id == "LEFTDOWN"
-        || action_id == "RIGHTUP"
-        || action_id == "RIGHTDOWN"
-        || action_id == "QUIT"
-        || action_id == "CONFIRM"
-        || action_id == "MOVE_SINGLE_ITEM" // maps to ENTER
-        || action_id == "MOVE_ARMOR" // maps to ENTER
-        || action_id == "ANY_INPUT"
-        || action_id == "DELETE_TEMPLATE" // strictly we shouldn't have this one, but I don't like seeing the "d" on the main menu by default. :)
+bool ignore_action_for_quick_shortcuts(const std::string& action) {
+   return (action == "UP"
+        || action == "DOWN"
+        || action == "LEFT"
+        || action == "RIGHT"
+        || action == "LEFTUP"
+        || action == "LEFTDOWN"
+        || action == "RIGHTUP"
+        || action == "RIGHTDOWN"
+        || action == "QUIT"
+        || action == "CONFIRM"
+        || action == "MOVE_SINGLE_ITEM" // maps to ENTER
+        || action == "MOVE_ARMOR" // maps to ENTER
+        || action == "ANY_INPUT"
+        || action == "DELETE_TEMPLATE" // strictly we shouldn't have this one, but I don't like seeing the "d" on the main menu by default. :)
         );
 }
 
@@ -1421,8 +1421,8 @@ void reorder_quick_shortcuts(quick_shortcuts_t& qsl) {
         }
 }
 
-long choose_best_key_for_action(const std::string& action_id, const std::string& category) {
-    const std::vector<input_event>& events = inp_mngr.get_input_for_action( action_id, category );
+long choose_best_key_for_action(const std::string& action, const std::string& category) {
+    const std::vector<input_event>& events = inp_mngr.get_input_for_action( action, category );
     long best_key = -1;
     for( const auto &events_event : events ) {
         if( events_event.type == CATA_INPUT_KEYBOARD && events_event.sequence.size() == 1 ) {
@@ -1437,6 +1437,28 @@ long choose_best_key_for_action(const std::string& action_id, const std::string&
     return best_key;
 }
 
+bool add_best_key_for_action_to_quick_shortcuts(std::string action_str, const std::string& category, bool back) {
+    quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+    long best_key = choose_best_key_for_action(action_str, category);
+    if (best_key >= 0) {
+        input_event event = input_event(best_key, CATA_INPUT_KEYBOARD);
+        bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
+        if (!shortcut_exists) {
+            if (back)
+                qsl.push_back(event);
+            else
+                qsl.push_front(event);
+			return true;
+        }
+    }
+	return false;
+}
+
+bool add_best_key_for_action_to_quick_shortcuts(action_id action, const std::string& category, bool back) {
+    std::string action_str = action_ident(action);
+    return add_best_key_for_action_to_quick_shortcuts(action_str, category, back);
+}
+
 void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
@@ -1447,7 +1469,10 @@ void draw_quick_shortcuts() {
     quick_shortcuts_t& qsl = quick_shortcuts_map[category];
     if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
         if (category == "DEFAULTMODE") {
-            // add nothing since there's so many things defined it would be ridiculous. let player bind what they want as they play.
+            // Start player out with inventory + map shortcut
+            add_best_key_for_action_to_quick_shortcuts(ACTION_INVENTORY, category, false);
+            add_best_key_for_action_to_quick_shortcuts(ACTION_MAP, category, false);
+            add_best_key_for_action_to_quick_shortcuts(ACTION_HELP, category, false);
         }
         else {
             // This is an empty quick-shortcuts list, let's pre-populate it as best we can from the input context
@@ -1459,14 +1484,12 @@ void draw_quick_shortcuts() {
             // First process registered actions
             std::vector<std::string>& registered_actions = touch_input_context.get_registered_actions();
             for (std::vector<std::string>::iterator it = registered_actions.begin(); it != registered_actions.end(); ++it) {
-                std::string& action_id = *it;
-                //LOGD("prepopulating action id %s...", action_id.c_str());
-                if (ignore_action_for_quick_shortcuts(action_id))
+                std::string& action = *it;
+                //LOGD("prepopulating action id %s...", action.c_str());
+                if (ignore_action_for_quick_shortcuts(action))
                     continue;
 
-                long best_key = choose_best_key_for_action(action_id, category);
-                if (best_key >= 0)
-                    qsl.push_back(input_event(best_key, CATA_INPUT_KEYBOARD));
+                add_best_key_for_action_to_quick_shortcuts(action, category, true);
             }            
 
             // Then process manual keys
@@ -1794,15 +1817,19 @@ void CheckMessages()
                     actions.push_back(ACTION_TOGGLE_SAFEMODE);
                 }
 
+                // Check if we're hungry or thirsty - if so, add eat
+                if (g->u.get_hunger() > 40 || g->u.get_thirst() > 40) {
+                    actions.push_back(ACTION_EAT);
+                }
+
+                // Check if we're tired - if so, add sleep
+                if (g->u.get_fatigue() > TIRED) {
+                    actions.push_back(ACTION_SLEEP);
+                }
+
                 for(const auto& action : actions) {
-                    long best_key = choose_best_key_for_action(action_ident(action), touch_input_context.get_category());
-                    if (best_key >= 0) {
-                        input_event event = input_event(best_key, CATA_INPUT_KEYBOARD);
-                        bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
-                        if (!shortcut_exists)
-                            qsl.push_front(event);
-                            needupdate = true;
-                    }
+                    if (add_best_key_for_action_to_quick_shortcuts(action, touch_input_context.get_category(), false))
+						needupdate = true;
                 }
             }
         }
@@ -1828,6 +1855,7 @@ void CheckMessages()
         // If we received a first tap and not another one within a certain period, this was a single tap, so trigger the input event
         if (!is_quick_shortcut_touch && !is_two_finger_touch && last_tap_time > 0 && ticks - last_tap_time >= FINGER_INITIAL_DELAY) {
             // Single tap
+            //LOGD("single tap, is_default_mode: %d category: %s", is_default_mode, touch_input_context.get_category().c_str());
             last_tap_time = ticks;
             last_input = input_event(is_default_mode ? '.' : '\n', CATA_INPUT_KEYBOARD);
             last_tap_time = 0;
