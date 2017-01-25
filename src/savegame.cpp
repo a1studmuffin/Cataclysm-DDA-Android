@@ -116,7 +116,6 @@ void game::serialize(std::ostream & fout) {
                 json.member( e.first );
                 const std::list<input_event>& qsl = e.second;
                 json.start_array();
-                int save_start = 0;
                 for (const auto& event : qsl)
                     json.write(event.sequence[0]);
                 json.end_array();
