@@ -85,6 +85,7 @@ struct input_event {
         mouse_x = other.mouse_x;
         mouse_y = other.mouse_y;
         text = other.text;
+        return *this;
     }
 #endif
 
@@ -389,7 +390,9 @@ class input_context
         	next_action = other.next_action;
         	iso_mode = other.iso_mode;
         	action_name_overrides = other.action_name_overrides;
+            return *this;
     	}
+        
     	bool operator==(const input_context& other) const {
         	return category == other.category &&
             	registered_actions == other.registered_actions &&
