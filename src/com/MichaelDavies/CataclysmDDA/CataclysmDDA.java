@@ -29,13 +29,26 @@ public class CataclysmDDA extends SDLActivity {
     		// This allows all data to be read/written from C++ via std::io operations as per desktop builds.
     		// It would be cool if this wasn't necessary, but this is the path of least resistance to get it running on Android.
     		// I certainly don't fancy rewriting all of CDDA's file IO operations, how about you? :)
-        if (!PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getBoolean("installed", false)) {
+        String this_version = "0.C-20818-g6ec9931";
+        if (!this_version.equals(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("installed", ""))) {
+            deleteRecursive(new File(getExternalFilesDir(null) + "/data"));
+            deleteRecursive(new File(getExternalFilesDir(null) + "/gfx"));
+            deleteRecursive(new File(getExternalFilesDir(null) + "/lua"));
             copyAssetFolder(getAssets(), "data", getExternalFilesDir(null) + "/data");
             copyAssetFolder(getAssets(), "gfx", getExternalFilesDir(null) + "/gfx");
             copyAssetFolder(getAssets(), "lua", getExternalFilesDir(null) + "/lua");
-            PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putBoolean("installed", true).commit();
+            PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", this_version).commit();
         }
         super.onCreate(savedInstanceState);
+    }
+
+    // Pinched from http://stackoverflow.com/questions/4943629/how-to-delete-a-whole-folder-and-content
+    void deleteRecursive(File fileOrDirectory) {
+        if (fileOrDirectory.isDirectory())
+            for (File child : fileOrDirectory.listFiles())
+                deleteRecursive(child);
+
+        fileOrDirectory.delete();
     }
 
 	// Pinched from http://stackoverflow.com/questions/16983989/copy-directory-from-assets-to-data-folder
