@@ -1482,20 +1482,38 @@ void options_manager::init()
         false
         );
 
+    mOptionsSort["android"]++;
+
+    add("ANDROID_KEYBOARD_SCREEN_SCALE", "android", _("Virtual keyboard screen scale"),
+        _("When the virtual keyboard is visible, scale the screen to prevent overlapping. Useful for text entry so you can see what you're typing."),
+        true
+        );
+
     add("ANDROID_AUTO_KEYBOARD", "android", _("Auto-manage virtual keyboard"),
         _("If true, automatically show/hide the virtual keyboard when necessary based on context. Turn this off if using a physical keyboard."),
         true
         );
+
+    mOptionsSort["android"]++;
 
     add("ANDROID_HIDE_HOLDS", "android", _("Hide shortcuts during touch holds"),
         _("If true, hides on-screen keyboard shortcuts during touch holds. Helps keep the view uncluttered while travelling long distances and navigating menus."),
         true
         );
 
-    add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-add gameplay shortcuts"),
-        _("If true, common in-game shortcuts are added automatically when needed (similar to Action Menu behavior)."),
+    mOptionsSort["android"]++;
+
+    add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-manage contextual gameplay shortcuts"),
+        _("If true, contextual in-game shortcuts are added and removed automatically as needed."),
         true
         );
+
+    add("ANDROID_SHORTCUT_MOVE_FRONT", "android", _("Move used shortcuts to front"),
+        _("If true, using an existing shortcut will always move it to the front of the shortcuts list. If false, only shortcuts typed via virtual keyboard will move to the front. (Does not apply to navigational shortcuts like ? < > TAB or BACKTAB.)"),
+        false
+        );
+
+    mOptionsSort["android"]++;
 
     add("ANDROID_SHORTCUT_PERSISTENCE", "android", _("Shortcuts persistence"),
         _("If true, shortcuts are saved/restored with each save game. If false, shortcuts reset to defaults every time a world is loaded."),
@@ -1507,7 +1525,7 @@ void options_manager::init()
         "left,right", "left"
         );
 
-    add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (bg)"),
+    add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (background)"),
         _("The background opacity of on-screen keyboard shortcuts."),
         0, 100, 75
         );
@@ -1517,9 +1535,14 @@ void options_manager::init()
         0, 100, 100
         );
 
-    add("ANDROID_SHORTCUT_OPACITY_FG", "android", _("Shortcut opacity (fg)"),
+    add("ANDROID_SHORTCUT_OPACITY_FG", "android", _("Shortcut opacity (text)"),
         _("The foreground opacity of on-screen keyboard shortcuts."),
         0, 100, 100
+        );
+
+    add("ANDROID_SHORTCUT_COLOR", "android", _("Shortcut color"),
+        _("The color of on-screen keyboard shortcuts."),
+        0, 15, 15
         );
 
     add("ANDROID_SHORTCUT_BORDER", "android", _("Shortcut border"),

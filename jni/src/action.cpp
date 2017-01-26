@@ -536,7 +536,11 @@ bool can_interact_at( action_id action, const tripoint &p )
             return can_move_vertical_at( p, -1 );
             break;
         case ACTION_EXAMINE:
-            return can_examine_at( p );
+            return can_examine_at( p )
+#ifdef __ANDROID__
+             || g->m.has_items( p )
+#endif
+             ;
             break;
         default:
             return false;

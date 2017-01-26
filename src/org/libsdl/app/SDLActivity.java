@@ -178,6 +178,18 @@ public class SDLActivity extends Activity {
         mLayout.addView(mSurface);
 
         setContentView(mLayout);
+
+        mLayout.getViewTreeObserver().addOnGlobalLayoutListener(
+            new ViewTreeObserver.OnGlobalLayoutListener() {
+            public void onGlobalLayout(){
+                Rect r = new Rect();
+                View view = getWindow().getDecorView();
+                view.getWindowVisibleDisplayFrame(r);
+                //Log.v(TAG, "getWindowVisibleDisplayFrame(r): r.left " + r.left + " r.top " + r.top + " r.right " + r.right + " r.bottom " + r.bottom);
+                SDLActivity.onNativeVisibleDisplayFrameChanged(r.left, r.top, r.right, r.bottom);
+            }
+            });
+
         
         // Get filename from "Open with" of another application
         Intent intent = getIntent();
@@ -417,6 +429,7 @@ public class SDLActivity extends Activity {
     public static native void nativePause();
     public static native void nativeResume();
     public static native void onNativeDropFile(String filename);
+    public static native void onNativeVisibleDisplayFrameChanged(int left, int top, int right, int bottom);
     public static native void onNativeResize(int x, int y, int format, float rate);
     public static native int onNativePadDown(int device_id, int keycode);
     public static native int onNativePadUp(int device_id, int keycode);
@@ -1465,17 +1478,26 @@ class DummyEdit extends View implements View.OnKeyListener {
     //
     @Override
     public boolean onKeyPreIme (int keyCode, KeyEvent event) {
+
+		// HACK: Make sure the SDL activity receives native events for back button, even if DummyEdit is in focus
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.getAction()==KeyEvent.ACTION_DOWN)
+                SDLActivity.onNativeKeyDown(keyCode);
+            else if (event.getAction()==KeyEvent.ACTION_UP)
+                SDLActivity.onNativeKeyUp(keyCode);
+        }
+
         // As seen on StackOverflow: http://stackoverflow.com/questions/7634346/keyboard-hide-event
         // FIXME: Discussion at http://bugzilla.libsdl.org/show_bug.cgi?id=1639
         // FIXME: This is not a 100% effective solution to the problem of detecting if the keyboard is showing or not
         // FIXME: A more effective solution would be to assume our Layout to be RelativeLayout or LinearLayout
         // FIXME: And determine the keyboard presence doing this: http://stackoverflow.com/questions/2150078/how-to-check-visibility-of-software-keyboard-in-android
         // FIXME: An even more effective way would be if Android provided this out of the box, but where would the fun be in that :)
-        if (event.getAction()==KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
-            if (SDLActivity.mTextEdit != null && SDLActivity.mTextEdit.getVisibility() == View.VISIBLE) {
-                SDLActivity.onNativeKeyboardFocusLost();
-            }
-        }
+        //if (event.getAction()==KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
+        //    if (SDLActivity.mTextEdit != null && SDLActivity.mTextEdit.getVisibility() == View.VISIBLE) {
+        //        SDLActivity.onNativeKeyboardFocusLost();
+        //    }
+        //}
         return super.onKeyPreIme(keyCode, event);
     }
 
