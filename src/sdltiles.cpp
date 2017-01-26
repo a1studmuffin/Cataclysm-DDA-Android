@@ -1934,11 +1934,6 @@ void CheckMessages()
                     actions.insert(ACTION_SLEEP);
                 }
 
-                // Check if we're unhappy :( - if so, add view morale
-                if (g->u.get_morale_level() <= -100) {
-                    actions.insert(ACTION_MORALE);
-                }
-
                 for(const auto& action : actions) {
                     if (add_best_key_for_action_to_quick_shortcuts(action, touch_input_context.get_category(), false))
 						needupdate = true;
