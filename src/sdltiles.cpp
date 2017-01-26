@@ -1471,21 +1471,24 @@ long choose_best_key_for_action(const std::string& action, const std::string& ca
     return best_key;
 }
 
-bool add_best_key_for_action_to_quick_shortcuts(std::string action_str, const std::string& category, bool back) {
-    quick_shortcuts_t& qsl = quick_shortcuts_map[category];
-    long best_key = choose_best_key_for_action(action_str, category);
-    if (best_key >= 0) {
-        input_event event = input_event(best_key, CATA_INPUT_KEYBOARD);
+bool add_key_to_quick_shortcuts(long key, const std::string& category, bool back) {
+    if (key >= 0) {
+        quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+        input_event event = input_event(key, CATA_INPUT_KEYBOARD);
         bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
         if (!shortcut_exists) {
             if (back)
                 qsl.push_back(event);
             else
                 qsl.push_front(event);
-			return true;
+            return true;
         }
     }
-	return false;
+    return false;
+}
+bool add_best_key_for_action_to_quick_shortcuts(std::string action_str, const std::string& category, bool back) {
+    long best_key = choose_best_key_for_action(action_str, category);
+    return add_key_to_quick_shortcuts(best_key, category, back);
 }
 
 bool add_best_key_for_action_to_quick_shortcuts(action_id action, const std::string& category, bool back) {
