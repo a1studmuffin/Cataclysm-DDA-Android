@@ -172,6 +172,7 @@ void intro();
 
 #ifdef __ANDROID__
 extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
+extern bool add_best_key_for_action_to_quick_shortcuts(action_id action, const std::string& category, bool back);
 #endif
 
 //The one and only game instance
@@ -2529,6 +2530,11 @@ bool game::handle_action()
             if (act == ACTION_NULL) {
                 return false;
             }
+#ifdef __ANDROID__
+    if (get_option<bool>("ANDROID_ACTIONMENU_AUTOADD") && ctxt.get_category() == "DEFAULTMODE") {
+        add_best_key_for_action_to_quick_shortcuts(act, ctxt.get_category(), false);
+    }
+#endif
         }
 
         if ( can_action_change_worldstate( act ) ) {
