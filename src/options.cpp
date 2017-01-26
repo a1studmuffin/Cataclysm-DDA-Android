@@ -1523,6 +1523,11 @@ void options_manager::init()
         false
         );
 
+    add("ANDROID_SHORTCUT_ZONE", "android", _("Separate shortcuts for No Auto Pickup zones"),
+        _("If true, separate gameplay shortcuts will be used within No Auto Pickup zones. Useful for keeping home base actions separate from exploring actions."),
+        true
+        );
+
     mOptionsSort["android"]++;
 
     add("ANDROID_SHORTCUT_PERSISTENCE", "android", _("Shortcuts persistence"),

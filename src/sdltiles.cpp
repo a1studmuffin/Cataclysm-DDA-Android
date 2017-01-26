@@ -1350,6 +1350,12 @@ std::map<std::string, quick_shortcuts_t> quick_shortcuts_map;
 // quick shortcuts to disappear momentarily.
 input_context touch_input_context;
 
+std::string get_quick_shortcut_name(const std::string& category) {
+    if( category == "DEFAULTMODE" && g->check_zone( "NO_AUTO_PICKUP", g->u.pos() ) && get_option<bool>("ANDROID_SHORTCUT_ZONE"))
+        return category + "DEFAULTMODE____SHORTCUTS";
+    return category;
+}
+
 // given the active quick shortcuts, returns the dimensions of each quick shortcut button.
 void get_quick_shortcut_dimensions(quick_shortcuts_t& qsl, float& border, float& width, float& height) {
     border = std::floor(get_option<int>( "ANDROID_SHORTCUT_BORDER" ));
@@ -1370,7 +1376,7 @@ input_event* get_quick_shortcut_under_finger(bool down = false) {
     if (!quick_shortcuts_enabled)
         return NULL;
 
-    quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+    quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
 
     float border, width, height;
     get_quick_shortcut_dimensions(qsl, border, width, height);
@@ -1473,7 +1479,7 @@ long choose_best_key_for_action(const std::string& action, const std::string& ca
 
 bool add_key_to_quick_shortcuts(long key, const std::string& category, bool back) {
     if (key >= 0) {
-        quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+        quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
         input_event event = input_event(key, CATA_INPUT_KEYBOARD);
         bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
         if (!shortcut_exists) {
@@ -1496,7 +1502,7 @@ bool add_best_key_for_action_to_quick_shortcuts(action_id action, const std::str
 }
 
 void remove_action_from_quick_shortcuts(std::string action_str, const std::string& category) {
-    quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+    quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
     const std::vector<input_event>& events = inp_mngr.get_input_for_action( action_str, category );
     for (const auto& event : events)
         qsl.remove(event);
@@ -1515,7 +1521,7 @@ void draw_quick_shortcuts() {
 
     bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
     std::string& category = touch_input_context.get_category();
-    quick_shortcuts_t& qsl = quick_shortcuts_map[category];
+    quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
     if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
         if (category == "DEFAULTMODE") {
             // Start player out with inventory + map shortcut
@@ -1791,7 +1797,7 @@ void CheckMessages()
     }
 
     bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
-    quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+    quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
 
     // Don't do this logic if we already need an update, otherwise we're likely to overload the game with too much input on hold repeat events
     if (!needupdate) {
@@ -2102,7 +2108,7 @@ void CheckMessages()
                         if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
                             SDL_StopTextInput();
 
-                        quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                        quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
                         qsl.remove(last_input);
                         qsl.push_front(last_input);
                         refresh_display();
@@ -2198,7 +2204,7 @@ void CheckMessages()
                         if (quick_shortcut) {
                             last_input = *quick_shortcut;
                             if (get_option<bool>("ANDROID_SHORTCUT_MOVE_FRONT")) {
-                                quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                                quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
                                 reorder_quick_shortcut(qsl, quick_shortcut->sequence[0], false);
                             }
                         }
@@ -2211,7 +2217,7 @@ void CheckMessages()
                                 finger_down_y - finger_curr_y > std::abs(finger_down_x - finger_curr_x))
                             {
                                 // a flick up was detected, remove the quick shortcut!
-                                quick_shortcuts_t& qsl = quick_shortcuts_map[touch_input_context.get_category()];
+                                quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
                                 qsl.remove(*quick_shortcut);
                             }
                         }
