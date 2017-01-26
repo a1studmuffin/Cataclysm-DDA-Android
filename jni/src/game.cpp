@@ -173,6 +173,7 @@ void intro();
 #ifdef __ANDROID__
 extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
 extern bool add_best_key_for_action_to_quick_shortcuts(action_id action, const std::string& category, bool back);
+extern bool add_key_to_quick_shortcuts(long key, const std::string& category, bool back);
 #endif
 
 //The one and only game instance
@@ -1874,6 +1875,12 @@ int game::inventory_item_menu(int pos, int iStartX, int iWidth, const inventory_
 
     item &oThisItem = u.i_at( pos );
     if( u.has_item( oThisItem ) ) {
+
+#ifdef __ANDROID__
+    if (get_option<bool>("ANDROID_INVENTORY_AUTOADD"))
+        add_key_to_quick_shortcuts(oThisItem.invlet, "INVENTORY", false);
+#endif
+
         std::vector<iteminfo> vThisItem, vDummy;
 
         const bool bHPR = get_auto_pickup().has_rule(oThisItem.tname( 1, false ));

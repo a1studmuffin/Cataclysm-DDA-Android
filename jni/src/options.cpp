@@ -1504,7 +1504,12 @@ void options_manager::init()
     mOptionsSort["android"]++;
 
     add("ANDROID_ACTIONMENU_AUTOADD", "android", _("Add shortcuts for action menu selections"),
-        _("If true, using an action via the in-game action menu will automatically add a shortcut."),
+        _("If true, automatically add a shortcut for actions selected via the in-game action menu."),
+        true
+        );
+
+    add("ANDROID_INVENTORY_AUTOADD", "android", _("Add shortcuts for inventory items"),
+        _("If true, automatically add a shortcut for items selected via the inventory."),
         true
         );
 
