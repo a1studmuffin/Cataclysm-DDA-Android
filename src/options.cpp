@@ -1503,6 +1503,11 @@ void options_manager::init()
 
     mOptionsSort["android"]++;
 
+    add("ANDROID_ACTIONMENU_AUTOADD", "android", _("Add shortcuts for action menu selections"),
+        _("If true, using an action via the in-game action menu will automatically add a shortcut."),
+        true
+        );
+
     add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-manage contextual gameplay shortcuts"),
         _("If true, contextual in-game shortcuts are added and removed automatically as needed."),
         true
