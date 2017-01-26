@@ -1279,6 +1279,10 @@ bool game::cleanup_at_end()
 
     MAPBUFFER.reset();
     overmap_buffer.clear();
+
+#ifdef __ANDROID__
+    quick_shortcuts_map.clear();
+#endif
     return true;
 }
 
@@ -2538,9 +2542,9 @@ bool game::handle_action()
                 return false;
             }
 #ifdef __ANDROID__
-    if (get_option<bool>("ANDROID_ACTIONMENU_AUTOADD") && ctxt.get_category() == "DEFAULTMODE") {
-        add_best_key_for_action_to_quick_shortcuts(act, ctxt.get_category(), false);
-    }
+            if (get_option<bool>("ANDROID_ACTIONMENU_AUTOADD") && ctxt.get_category() == "DEFAULTMODE") {
+                add_best_key_for_action_to_quick_shortcuts(act, ctxt.get_category(), false);
+            }
 #endif
         }
 
@@ -3315,9 +3319,6 @@ bool game::handle_action()
         case ACTION_SAVE:
             if (query_yn(_("Save and quit?"))) {
                 if(save()) {
-#ifdef __ANDROID__
-                    quick_shortcuts_map.clear();
-#endif
                     u.moves = 0;
                     uquit = QUIT_SAVED;
                 }
