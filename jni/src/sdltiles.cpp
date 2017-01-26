@@ -1333,13 +1333,7 @@ static bool is_two_finger_touch = false; // has a second finger touched the scre
 static bool is_quick_shortcut_touch = false; // did this touch start on a quick shortcut?
 static bool quick_shortcuts_enabled = true;
 static bool quick_shortcuts_toggle_handled = false;
-static const unsigned long FINGER_INITIAL_DELAY = 300; // wait this long before repeating inputs for finger holds
-static const unsigned long FINGER_FLICK_DELAY = 200; // within this time is considered a flick
-static const unsigned long FINGER_REPEAT_DELAY_MIN = 100; // repeat input every X milliseconds - min
-static const unsigned long FINGER_REPEAT_DELAY_MAX = 400; // repeat input every X milliseconds - max
-static const float FINGER_REPEAT_DELAY_RANGE = 0.25f; // percentage of screen width to go from max -> min repeat delay
-static const float FINGER_DEADZONE_RANGE = 0.025f; // percentage of screen width to deadzone directional swipe input
-unsigned long finger_repeat_delay = FINGER_REPEAT_DELAY_MAX; // the current finger repeat delay - will be somewhere between the min/max values depending on user input
+unsigned long finger_repeat_delay = 500; // the current finger repeat delay - will be somewhere between the min/max values depending on user input
 
 // Quick shortcuts container: maps the touch input context category (std::string) to a std::list of input_events.
 typedef std::list<input_event> quick_shortcuts_t;
@@ -1516,7 +1510,7 @@ void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
         SDL_IsTextInputActive() ||
-        (get_option<bool>("ANDROID_HIDE_HOLDS") && !is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= FINGER_INITIAL_DELAY)) // player is swipe + holding in a direction
+        (get_option<bool>("ANDROID_HIDE_HOLDS") && !is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY"))) // player is swipe + holding in a direction
         return;
 
     bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
@@ -1577,7 +1571,7 @@ void draw_quick_shortcuts() {
             text_scale = std::min(text_scale, 0.75f * (width / (font->fontwidth * text.length())));
         }
         hovered = is_quick_shortcut_touch && hovered_quick_shortcut == &event;
-        show_hint = hovered && SDL_GetTicks() - finger_down_time > FINGER_INITIAL_DELAY;
+        show_hint = hovered && SDL_GetTicks() - finger_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY");
         std::string hint_text;
         if (show_hint) {
             hint_text = touch_input_context.get_action_name(touch_input_context.input_to_action(event));
@@ -1659,8 +1653,10 @@ void update_finger_repeat_delay() {
     float delta_x = finger_curr_x - finger_down_x;
     float delta_y = finger_curr_y - finger_down_y;
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y);
-    float t = clmp((dist - (FINGER_DEADZONE_RANGE*WindowWidth)) / (FINGER_REPEAT_DELAY_RANGE*WindowWidth), 0.0f, 1.0f);
-    finger_repeat_delay = lerp(t, FINGER_REPEAT_DELAY_MAX, FINGER_REPEAT_DELAY_MIN);
+    float t = clmp((dist - (get_option<float>("ANDROID_DEADZONE_RANGE")*WindowWidth)) / std::max(0.01f, (get_option<float>("ANDROID_REPEAT_DELAY_RANGE"))*WindowWidth), 0.0f, 1.0f);
+    finger_repeat_delay = lerp(t, 
+        (unsigned long)std::max(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")), 
+        (unsigned long)std::min(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")));
 }
 
 // TODO: Is there a better way to detect when string entry is allowed?
@@ -1682,7 +1678,7 @@ void handle_finger_input(unsigned long ticks) {
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y); // in pixel space
     bool handle_diagonals = touch_input_context.is_action_registered("LEFTUP");
 
-    if (dist > (FINGER_DEADZONE_RANGE*WindowWidth)) {
+    if (dist > (get_option<float>("ANDROID_DEADZONE_RANGE")*WindowWidth)) {
         if (!handle_diagonals) {
             if (delta_x >= 0 && delta_y >= 0)
                 last_input = input_event(delta_x > delta_y ? KEY_RIGHT : KEY_DOWN, CATA_INPUT_KEYBOARD);
@@ -1750,14 +1746,14 @@ void handle_finger_input(unsigned long ticks) {
         }
     }
     else {
-        if (ticks - finger_down_time >= FINGER_INITIAL_DELAY) {
+        if (ticks - finger_down_time >= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             // Single tap (repeat) - held, so always treat this as a tap
             // We only allow repeats for waiting, not confirming in menus as that's a bit silly
             if (touch_input_context.get_category() == "DEFAULTMODE")
                 last_input = input_event('.', CATA_INPUT_KEYBOARD);
         }
         else {
-            if (last_tap_time > 0 && ticks - last_tap_time < FINGER_INITIAL_DELAY) {
+            if (last_tap_time > 0 && ticks - last_tap_time < (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
                 // Double tap
                 last_input = input_event(KEY_ESCAPE, CATA_INPUT_KEYBOARD);
                 last_tap_time = 0;
@@ -1957,7 +1953,7 @@ void CheckMessages()
         }
 
         // Toggle quick shortcuts on/off
-        if (ac_back_down_time > 0 && ticks - ac_back_down_time > FINGER_INITIAL_DELAY) {
+        if (ac_back_down_time > 0 && ticks - ac_back_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             if (!quick_shortcuts_toggle_handled) {
                 quick_shortcuts_enabled = !quick_shortcuts_enabled;
                 quick_shortcuts_toggle_handled = true;
@@ -1966,7 +1962,7 @@ void CheckMessages()
         }
 
         // Handle repeating inputs from touch + holds
-        if (!is_quick_shortcut_touch && !is_two_finger_touch && finger_down_time > 0 && ticks - finger_down_time > FINGER_INITIAL_DELAY) {
+        if (!is_quick_shortcut_touch && !is_two_finger_touch && finger_down_time > 0 && ticks - finger_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             if (ticks - finger_repeat_time > finger_repeat_delay) {
                 handle_finger_input(ticks);
                 finger_repeat_time = ticks;
@@ -1975,7 +1971,7 @@ void CheckMessages()
         }
 
         // If we received a first tap and not another one within a certain period, this was a single tap, so trigger the input event
-        if (!is_quick_shortcut_touch && !is_two_finger_touch && last_tap_time > 0 && ticks - last_tap_time >= FINGER_INITIAL_DELAY) {
+        if (!is_quick_shortcut_touch && !is_two_finger_touch && last_tap_time > 0 && ticks - last_tap_time >= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             // Single tap
             //LOGD("single tap, is_default_mode: %d category: %s", is_default_mode, touch_input_context.get_category().c_str());
             last_tap_time = ticks;
@@ -1985,7 +1981,7 @@ void CheckMessages()
         }
 
         // ensure hint text pops up even if player doesn't move finger to trigger a FINGERMOTION event
-        if (is_quick_shortcut_touch && finger_down_time > 0 && ticks - finger_down_time > FINGER_INITIAL_DELAY) {
+        if (is_quick_shortcut_touch && finger_down_time > 0 && ticks - finger_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             needupdate = true;
         }
     }
@@ -2077,7 +2073,7 @@ void CheckMessages()
 #ifdef __ANDROID__
 				// Toggle virtual keyboard with Android back button
                 if (ev.key.keysym.sym == SDLK_AC_BACK) {
-                    if (ticks - ac_back_down_time <= FINGER_INITIAL_DELAY) {
+                    if (ticks - ac_back_down_time <= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
                         if (SDL_IsTextInputActive())
                             SDL_StopTextInput();
                         else
@@ -2212,7 +2208,7 @@ void CheckMessages()
                             // Get the quick shortcut that was originally touched
                             quick_shortcut = get_quick_shortcut_under_finger(true);
                             if (quick_shortcut && 
-                                ticks - finger_down_time <= FINGER_FLICK_DELAY &&
+                                ticks - finger_down_time <= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY") &&
                                 finger_curr_y < finger_down_y &&
                                 finger_down_y - finger_curr_y > std::abs(finger_down_x - finger_curr_x))
                             {
@@ -2242,7 +2238,7 @@ void CheckMessages()
                                 }                                 
                             }
                         }
-                        else if (ticks - finger_down_time <= FINGER_INITIAL_DELAY) {
+                        else if (ticks - finger_down_time <= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
                             handle_finger_input(ticks);                        
                         }
                     }

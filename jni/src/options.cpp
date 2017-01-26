@@ -1501,6 +1501,31 @@ void options_manager::init()
         true
         );
 
+    add("ANDROID_DEADZONE_RANGE", "android", _("Touch deadzone range"),
+        _("During a touch hold, sliding beyond this distance from the starting point will trigger directional input. Specified as a percentage of screen width."),
+        0.01f, 1.0f, 0.025f, 0.005f, COPT_NO_HIDE, "%.3f"
+        );
+
+    add("ANDROID_REPEAT_DELAY_RANGE", "android", _("Repeat touch input range"),
+        _("During a touch hold, sliding this far away from the starting point will repeat at the fastest speed (see below). Specified as a percentage of screen width."),
+        0.1f, 1.0f, 0.25f, 0.05f
+        );
+
+    add("ANDROID_INITIAL_DELAY", "android", _("Repeat touch initial delay"),
+        _("During a touch hold, wait this long before repeating input, in milliseconds. Also used for tap/double-tap detection, flick detection and toggling quick shortcuts."),
+        150, 1000, 300
+        );
+
+    add("ANDROID_REPEAT_DELAY_MIN", "android", _("Repeat touch input delay (fastest)"),
+        _("How fast should touch input repeat during a touch hold, in milliseconds."),
+        50, 1000, 100
+        );
+
+    add("ANDROID_REPEAT_DELAY_MAX", "android", _("Repeat touch input delay (slowest)"),
+        _("How fast should touch input repeat during a touch hold, in milliseconds."),
+        50, 1000, 400
+        );
+
     mOptionsSort["android"]++;
 
     add("ANDROID_ACTIONMENU_AUTOADD", "android", _("Add shortcuts for action menu selections"),
