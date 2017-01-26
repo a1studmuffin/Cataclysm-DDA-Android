@@ -1513,6 +1513,7 @@ void draw_quick_shortcuts() {
         (get_option<bool>("ANDROID_HIDE_HOLDS") && !is_quick_shortcut_touch && finger_down_time > 0 && SDL_GetTicks() - finger_down_time >= FINGER_INITIAL_DELAY)) // player is swipe + holding in a direction
         return;
 
+    bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
     std::string& category = touch_input_context.get_category();
     quick_shortcuts_t& qsl = quick_shortcuts_map[category];
     if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
@@ -1537,19 +1538,21 @@ void draw_quick_shortcuts() {
                 if (ignore_action_for_quick_shortcuts(action))
                     continue;
 
-                add_best_key_for_action_to_quick_shortcuts(action, category, true);
+                add_best_key_for_action_to_quick_shortcuts(action, category, !shortcut_right);
             }            
 
             // Then process manual keys
             std::vector<input_context::manual_key>& registered_manual_keys = touch_input_context.get_registered_manual_keys();
             for (const auto& manual_key : registered_manual_keys) {
                 //LOGD("prepopulating key %ld %s...", manual_key.key, manual_key.text.c_str());
-                qsl.push_back(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
+                if (shortcut_right)
+                    qsl.push_front(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
+                else
+                    qsl.push_back(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
             }
         }
     }
 
-    bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
     reorder_quick_shortcuts(qsl);
 
     float border, width, height;
