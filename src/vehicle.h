@@ -1055,6 +1055,9 @@ public:
     // opens/closes doors or multipart doors
     void open(int part_index);
     void close(int part_index);
+#ifdef __ANDROID__
+    bool is_open(int part_index) const;
+#endif
 
     // Consists only of parts with the FOLDABLE tag.
     bool is_foldable() const;

@@ -55,14 +55,25 @@ struct input_event {
     // the input is not UTF-8 or not even text.
     std::string text;
 
+#ifdef __ANDROID__
+	// Used exclusively by the quick shortcuts to determine how stale a shortcut is
+    int shortcut_last_used_action_counter;
+#endif
+
     input_event() {
         mouse_x = mouse_y = 0;
         type = CATA_INPUT_ERROR;
+#ifdef __ANDROID__
+    	shortcut_last_used_action_counter = 0;
+#endif
     }
     input_event( long s, input_event_t t )
         : type( t ) {
         mouse_x = mouse_y = 0;
         sequence.push_back( s );
+#ifdef __ANDROID__
+    	shortcut_last_used_action_counter = 0;
+#endif
     }
 
     long get_first_input() const {
@@ -85,6 +96,7 @@ struct input_event {
         mouse_x = other.mouse_x;
         mouse_y = other.mouse_y;
         text = other.text;
+		shortcut_last_used_action_counter = other.shortcut_last_used_action_counter;
         return *this;
     }
 #endif

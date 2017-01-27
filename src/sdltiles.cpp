@@ -56,6 +56,7 @@
 #ifdef __ANDROID__
 #include "worldfactory.h"
 #include "action.h"
+#include "vehicle.h"
 #include <jni.h>
 #endif
 
@@ -1346,7 +1347,7 @@ input_context touch_input_context;
 
 std::string get_quick_shortcut_name(const std::string& category) {
     if( category == "DEFAULTMODE" && g->check_zone( "NO_AUTO_PICKUP", g->u.pos() ) && get_option<bool>("ANDROID_SHORTCUT_ZONE"))
-        return category + "DEFAULTMODE____SHORTCUTS";
+        return "DEFAULTMODE____SHORTCUTS";
     return category;
 }
 
@@ -1416,16 +1417,23 @@ bool ignore_action_for_quick_shortcuts(const std::string& action) {
         );
 }
 
+// Adds a quick shortcut to a quick_shortcut list, setting shortcut_last_used_action_counter accordingly.
+void add_quick_shortcut(quick_shortcuts_t& qsl, input_event& event, bool back, bool reset_shortcut_last_used_action_counter) {
+    if (reset_shortcut_last_used_action_counter)
+        event.shortcut_last_used_action_counter = g->get_user_action_counter(); // only used for DEFAULTMODE
+    if (back)
+        qsl.push_back(event);
+    else
+        qsl.push_front(event);
+}
+
 // Given a quick shortcut list and a specific key, move that key to the front or back of the list.
 void reorder_quick_shortcut(quick_shortcuts_t& qsl, long key, bool back) {
         for(const auto& event : qsl) {
             if (event.sequence[0] == key) {
                 input_event event_copy = event;
                 qsl.remove(event);
-                if (back)
-                    qsl.push_back(event_copy);
-                else
-                    qsl.push_front(event_copy);
+                add_quick_shortcut(qsl, event_copy, back, false);
                 break;
             }
         }
@@ -1475,12 +1483,12 @@ bool add_key_to_quick_shortcuts(long key, const std::string& category, bool back
     if (key >= 0) {
         quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
         input_event event = input_event(key, CATA_INPUT_KEYBOARD);
-        bool shortcut_exists = std::find(qsl.begin(), qsl.end(), event) != qsl.end();
-        if (!shortcut_exists) {
-            if (back)
-                qsl.push_back(event);
-            else
-                qsl.push_front(event);
+        quick_shortcuts_t::iterator it = std::find(qsl.begin(), qsl.end(), event);
+        if (it != qsl.end()) { // already exists
+            (*it).shortcut_last_used_action_counter = g->get_user_action_counter(); // make sure we refresh shortcut usage
+        }
+        else {
+            add_quick_shortcut(qsl, event, back, true); // doesn't exist, add it to the shortcuts and refresh shortcut usage
             return true;
         }
     }
@@ -1506,6 +1514,31 @@ void remove_action_from_quick_shortcuts(action_id action, const std::string& cat
     remove_action_from_quick_shortcuts(action_ident(action), category);
 }
 
+// Returns true if an expired action was removed
+bool remove_expired_actions_from_quick_shortcuts(const std::string& category) {
+    int remove_turns = get_option<int>("ANDROID_SHORTCUT_REMOVE_TURNS");
+    if (remove_turns <= 0)
+        return false;
+
+    // This should only ever be used on "DEFAULTMODE" category for gameplay shortcuts
+    if (category != "DEFAULTMODE")
+        return false;
+
+	bool ret = false;
+    quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
+    quick_shortcuts_t::iterator it = qsl.begin();
+    while (it != qsl.end()) {
+        if (g->get_user_action_counter() - (*it).shortcut_last_used_action_counter > remove_turns) {
+            it = qsl.erase(it);
+			ret = true;
+		}
+        else {
+            ++it;
+		}
+    }
+	return ret;
+}
+
 void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
@@ -1515,6 +1548,7 @@ void draw_quick_shortcuts() {
 
     bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
     std::string& category = touch_input_context.get_category();
+    bool is_default_mode = category == "DEFAULTMODE";
     quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
     if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
         if (category == "DEFAULTMODE") {
@@ -1545,15 +1579,15 @@ void draw_quick_shortcuts() {
             std::vector<input_context::manual_key>& registered_manual_keys = touch_input_context.get_registered_manual_keys();
             for (const auto& manual_key : registered_manual_keys) {
                 //LOGD("prepopulating key %ld %s...", manual_key.key, manual_key.text.c_str());
-                if (shortcut_right)
-                    qsl.push_front(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
-                else
-                    qsl.push_back(input_event(manual_key.key, CATA_INPUT_KEYBOARD));
+                input_event event(manual_key.key, CATA_INPUT_KEYBOARD);
+                add_quick_shortcut(qsl, event, !shortcut_right, true);
             }
         }
     }
 
-    reorder_quick_shortcuts(qsl);
+    // Only reorder quick shortcuts for non-gameplay lists that are likely to have navigational menu stuff
+    if (!is_default_mode)
+        reorder_quick_shortcuts(qsl);
 
     float border, width, height;
     get_quick_shortcut_dimensions(qsl, border, width, height);
@@ -1852,8 +1886,17 @@ void CheckMessages()
 
                             veh = g->m.veh_at( pos, veh_part );
                             if( veh ) {
-                                actions.insert(ACTION_CONTROL_VEHICLE);
-                                actions.insert(ACTION_CLOSE);
+                                if (veh->part_with_feature(veh_part, "CONTROLS") >= 0)
+                                    actions.insert(ACTION_CONTROL_VEHICLE);
+                                int openablepart = veh->part_with_feature(veh_part, "OPENABLE");
+                                if (openablepart >= 0 && veh->is_open(openablepart) && (dx != 0 || dy != 0)) // an open door adjacent to us
+                                    actions.insert(ACTION_CLOSE);
+                                if (dx == 0 && dy == 0) {
+                                    int cargopart = veh->part_with_feature(veh_part, "CARGO");
+                                    bool can_pickup = cargopart >= 0 && (!veh->get_items(cargopart).empty());
+                                    if (can_pickup)
+                                        actions.insert(ACTION_PICKUP);
+                                }
                             }
                         }
 
@@ -1913,7 +1956,9 @@ void CheckMessages()
                 if( g->m.has_items( g->u.pos() ) ) {
                     actions.insert(ACTION_PICKUP);
                 }
-                else {
+
+                // We're not able to pickup anything, so remove it
+                if (std::find(actions.begin(), actions.end(), ACTION_PICKUP) == actions.end()) {
                     actions_remove.insert(ACTION_PICKUP);
                 }
 
@@ -1938,7 +1983,7 @@ void CheckMessages()
                 }
 
                 for(const auto& action : actions) {
-                    if (add_best_key_for_action_to_quick_shortcuts(action, touch_input_context.get_category(), false))
+                    if (add_best_key_for_action_to_quick_shortcuts(action, touch_input_context.get_category(), !get_option<bool>("ANDROID_SHORTCUT_AUTOADD_FRONT")))
 						needupdate = true;
                 }
 
@@ -1949,6 +1994,9 @@ void CheckMessages()
                     needupdate = true;
             }
         }
+
+		if (remove_expired_actions_from_quick_shortcuts(touch_input_context.get_category()))
+			needupdate = true;
 
         // Toggle quick shortcuts on/off
         if (ac_back_down_time > 0 && ticks - ac_back_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
@@ -2056,7 +2104,7 @@ void CheckMessages()
                         // add a quick shortcut
                         if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
                             qsl.remove(last_input);
-                            qsl.push_front(last_input);
+                            add_quick_shortcut(qsl, last_input, false, true);
                             refresh_display();
                             //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
                             //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
@@ -2104,7 +2152,7 @@ void CheckMessages()
 
                         quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
                         qsl.remove(last_input);
-                        qsl.push_front(last_input);
+                        add_quick_shortcut(qsl, last_input, false, true);
                         refresh_display();
                         //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
                         //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
@@ -2201,6 +2249,7 @@ void CheckMessages()
                                 quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
                                 reorder_quick_shortcut(qsl, quick_shortcut->sequence[0], false);
                             }
+                            quick_shortcut->shortcut_last_used_action_counter = g->get_user_action_counter();
                         }
                         else {
                             // Get the quick shortcut that was originally touched
