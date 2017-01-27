@@ -1788,8 +1788,10 @@ void CheckMessages()
     // Copy the current input context
     if (input_context::input_context_stack.size() > 0) {
         input_context* new_input_context = *--input_context::input_context_stack.end();
-        if (new_input_context && *new_input_context != touch_input_context)
+        if (new_input_context && *new_input_context != touch_input_context) {
+            //LOGD("touch_input_context changed, copying...");
             touch_input_context = *new_input_context;
+        }
     }
 
     bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
@@ -1801,9 +1803,10 @@ void CheckMessages()
         // Check action weightings and auto-add any immediate-surrounding actions as quick shortcuts
         // This code is based heavily off action.cpp handle_action_menu() which puts common shortcuts at the top
         if (is_default_mode && get_option<bool>("ANDROID_SHORTCUT_AUTOADD")) {
-            static int last_turn = -1;
-            if (last_turn != calendar::turn) {
-                last_turn = calendar::turn;
+            static int last_moves_since_last_save = -1;
+            if (last_moves_since_last_save != g->moves_since_last_save) {
+                //LOGD("last_moves_since_last_save: %d moves_since_last_save %d, refreshing shortcut actions...", last_moves_since_last_save, g->moves_since_last_save);
+                last_moves_since_last_save = g->moves_since_last_save;
 
                 // Actions to add
                 std::set<action_id> actions;

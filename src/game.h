@@ -947,7 +947,13 @@ private:
         int next_npc_id, next_faction_id, next_mission_id; // Keep track of UIDs
         std::list<event> events;         // Game events to be processed
         std::map<mtype_id, int> kills;         // Player's kill count
+#ifdef __ANDROID__
+public:
+#endif
         int moves_since_last_save;
+#ifdef __ANDROID__
+private:
+#endif
         time_t last_save_timestamp;
         mutable std::array<float, OVERMAP_LAYERS> latest_lightlevels;
         // remoteveh() cache
