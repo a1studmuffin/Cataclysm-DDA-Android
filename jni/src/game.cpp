@@ -1899,6 +1899,11 @@ int game::inventory_item_menu(int pos, int iStartX, int iWidth, const inventory_
             switch( hint ) {
                 case HINT_CANT:
                     entry.text_color = c_ltgray;
+#ifdef __ANDROID__
+					// On Android I've taken the liberty of completely disabling 
+					// HINT_CANT inventory menu items, since they just complicate the UI.
+                    entry.enabled = false;
+#endif
                     break;
                 case HINT_IFFY:
                     entry.text_color = c_ltred;
