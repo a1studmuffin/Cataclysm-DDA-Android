@@ -183,13 +183,13 @@ void main_menu::init_strings()
             ss << *it << std::endl;
         }
         mmenu_credits.push_back( ss.str() );
-#ifdef __ANDROID__
-        mmenu_credits.push_back( "\nUnofficial Android port by Michael Davies." );
-#endif
     }
     if( mmenu_credits.empty() ) {
         mmenu_credits.push_back( _( "No credits information found." ) );
     }
+#ifdef __ANDROID__
+    mmenu_credits.push_back( "\nUnofficial Android port by Michael Davies." );
+#endif
 
     // fill menu with translated menu items
     vMenuItems.clear();
