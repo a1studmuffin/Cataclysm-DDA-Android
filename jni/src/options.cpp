@@ -1543,14 +1543,24 @@ void options_manager::init()
         true
         );
 
+    add("ANDROID_SHORTCUT_AUTOADD_FRONT", "android", _("Contextual gameplay shortcuts to front"),
+        _("If the above option is enabled, specifies whether contextual in-game shortcuts will be added to the front or back of the shortcuts list. True makes them easier to reach, False reduces shuffling of shortcut positions."),
+        false
+        );
+
     add("ANDROID_SHORTCUT_MOVE_FRONT", "android", _("Move used shortcuts to front"),
-        _("If true, using an existing shortcut will always move it to the front of the shortcuts list. If false, only shortcuts typed via virtual keyboard will move to the front. (Does not apply to navigational shortcuts like ? < > TAB or BACKTAB.)"),
+        _("If true, using an existing shortcut will always move it to the front of the shortcuts list. If false, only shortcuts typed via virtual keyboard will move to the front."),
         false
         );
 
     add("ANDROID_SHORTCUT_ZONE", "android", _("Separate shortcuts for No Auto Pickup zones"),
         _("If true, separate gameplay shortcuts will be used within No Auto Pickup zones. Useful for keeping home base actions separate from exploring actions."),
         true
+        );
+
+    add("ANDROID_SHORTCUT_REMOVE_TURNS", "android", _("Turns to remove unused gameplay shortcuts"),
+        _("If non-zero, unused gameplay shortcuts will be removed after this many turns (player actions)."),
+        0, 1000, 100
         );
 
     mOptionsSort["android"]++;
