@@ -2845,6 +2845,18 @@ input_event input_manager::get_input_event(WINDOW *win) {
         SDL_GetMouseState(&last_input.mouse_x, &last_input.mouse_y);
     } else if (last_input.type == CATA_INPUT_KEYBOARD) {
         previously_pressed_key = last_input.get_first_input();
+#ifdef __ANDROID__
+		int vibration_ms = get_option<int>("ANDROID_VIBRATION");
+		if (vibration_ms > 0) {
+            JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+            jobject activity = (jobject)SDL_AndroidGetActivity();
+            jclass clazz(env->GetObjectClass(activity));
+            jmethodID method_id = env->GetMethodID(clazz, "vibrate", "(I)V");
+            env->CallVoidMethod(activity, method_id, vibration_ms);
+        	env->DeleteLocalRef(activity);
+        	env->DeleteLocalRef(clazz);
+        }
+#endif
     }
 
     return last_input;
