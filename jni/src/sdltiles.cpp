@@ -2110,6 +2110,10 @@ void CheckMessages()
                             //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
                         }
                     }
+                    else if (lc == '\n' || lc == KEY_ESCAPE) {
+                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                            SDL_StopTextInput();
+                    }
 #endif
                 }
             }
@@ -2156,6 +2160,10 @@ void CheckMessages()
                         refresh_display();
                         //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
                         //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
+                    }
+                    else if (lc == '\n' || lc == KEY_ESCAPE) {
+                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                            SDL_StopTextInput();
                     }
 #endif
                 }
