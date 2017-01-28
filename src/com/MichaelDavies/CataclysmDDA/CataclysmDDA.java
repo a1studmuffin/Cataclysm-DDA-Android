@@ -16,6 +16,7 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.AssetManager;
 import android.preference.PreferenceManager;
+import android.os.Vibrator;
 
 public class CataclysmDDA extends SDLActivity {
     private static final String TAG = "CDDA";
@@ -97,5 +98,10 @@ public class CataclysmDDA extends SDLActivity {
         while((read = in.read(buffer)) != -1) {
           out.write(buffer, 0, read);
         }
+    }
+
+    public void vibrate(int duration) {
+        Vibrator v = (Vibrator)SDLActivity.mSingleton.getSystemService(Context.VIBRATOR_SERVICE);
+        v.vibrate(duration);
     }
 }

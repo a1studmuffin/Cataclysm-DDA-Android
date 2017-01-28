@@ -1526,6 +1526,11 @@ void options_manager::init()
         50, 1000, 400
         );
 
+    add("ANDROID_VIBRATION", "android", _("Vibration duration"),
+        _("If non-zero, vibrate the device for this long on input, in millisconds."),
+        0, 200, 20
+        );
+
     mOptionsSort["android"]++;
 
     add("ANDROID_ACTIONMENU_AUTOADD", "android", _("Add shortcuts for action menu selections"),

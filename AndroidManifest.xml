@@ -16,6 +16,7 @@
 
     <!-- Allow writing to external storage -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <!-- if you want to capture audio, uncomment this. -->
     <!-- <uses-permission android:name="android.permission.RECORD_AUDIO" /> -->
