@@ -1891,6 +1891,9 @@ void CheckMessages()
                                 int openablepart = veh->part_with_feature(veh_part, "OPENABLE");
                                 if (openablepart >= 0 && veh->is_open(openablepart) && (dx != 0 || dy != 0)) // an open door adjacent to us
                                     actions.insert(ACTION_CLOSE);
+                                int curtainpart = veh->part_with_feature(veh_part, "CURTAIN");
+                                if (curtainpart >= 0 && veh->is_open(curtainpart) && (dx != 0 || dy != 0))
+                                    actions.insert(ACTION_CLOSE);
                                 if (dx == 0 && dy == 0) {
                                     int cargopart = veh->part_with_feature(veh_part, "CARGO");
                                     bool can_pickup = cargopart >= 0 && (!veh->get_items(cargopart).empty());

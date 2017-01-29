@@ -5629,12 +5629,6 @@ bool vehicle::assign_seat( vehicle_part &pt, const npc& who )
 #ifdef __ANDROID__
 bool vehicle::is_open(int part_index) const
 {
-  if(!part_info(part_index).has_flag("OPENABLE")) {
-    debugmsg("Attempted to query open status of non-openable part %d (%s) on a %s!", part_index,
-               parts[ part_index ].name().c_str(), name.c_str());
-    return false;
-  }
-
   return parts[part_index].open;
 }
 #endif
