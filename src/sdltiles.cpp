@@ -210,6 +210,9 @@ static SDL_Window *window = NULL;
 static SDL_Renderer* renderer = NULL;
 static SDL_PixelFormat *format;
 static SDL_Texture *display_buffer;
+#ifdef __ANDROID__
+static SDL_Texture *touch_joystick;
+#endif
 int WindowWidth;        //Width of the actual window, not the curses window
 int WindowHeight;       //Height of the actual window, not the curses window
 // input from various input sources. Each input source sets the type and
@@ -424,9 +427,20 @@ bool WinCreate()
 
 #ifdef __ANDROID__
 	// TODO: Not too sure why this works to make fullscreen on Android behave. :/
-    if (window_flags & SDL_WINDOW_FULLSCREEN || window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP) {
-        SDL_GetWindowSize(window, &WindowWidth, &WindowHeight);
+    if ( window_flags & SDL_WINDOW_FULLSCREEN || window_flags & SDL_WINDOW_FULLSCREEN_DESKTOP ) {
+        SDL_GetWindowSize( window, &WindowWidth, &WindowHeight );
     }
+
+    // Load virtual joystick texture
+    SDL_Surface* touch_joystick_surface = IMG_Load( "android/joystick.png" );
+    if ( !touch_joystick_surface ) {
+        throw std::runtime_error(IMG_GetError());
+    }
+    touch_joystick = SDL_CreateTextureFromSurface( renderer, touch_joystick_surface );
+    if( !touch_joystick ) {
+        dbg( D_ERROR) << "failed to create texture: " << SDL_GetError();
+    }
+    SDL_FreeSurface( touch_joystick_surface );
 #endif
 
     ClearScreen();
@@ -488,6 +502,13 @@ void cleanup_sound();
 
 void WinDestroy()
 {
+#ifdef __ANDROID__
+	if ( touch_joystick ) {
+	    SDL_DestroyTexture( touch_joystick );
+		touch_joystick = NULL;
+	}
+#endif
+
 #ifdef SDL_SOUND
     // De-allocate all loaded sound.
     cleanup_sound();
@@ -683,6 +704,7 @@ void BitmapFont::OutputChar(long t, int x, int y, unsigned char color)
 
 #ifdef __ANDROID__
 void draw_quick_shortcuts();
+void draw_virtual_joystick();
 
 extern "C" {
 
@@ -763,6 +785,7 @@ void refresh_display()
 #ifdef __ANDROID__
     // Draw quick shortcuts on top of the game view
     draw_quick_shortcuts();
+    draw_virtual_joystick();
 #endif
     SDL_RenderPresent(renderer);
     if( SDL_SetRenderTarget( renderer, display_buffer ) != 0 ) {
@@ -1680,6 +1703,36 @@ void draw_quick_shortcuts() {
     }
 }
 
+
+void draw_virtual_joystick() {
+
+	// Bail out if we don't need to draw the joystick
+    if (!get_option<bool>("ANDROID_SHOW_VIRTUAL_JOYSTICK") || 
+        finger_down_time <= 0 || 
+        SDL_GetTicks() - finger_down_time <= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY") || 
+        is_quick_shortcut_touch || 
+        is_two_finger_touch)
+        return;
+
+    SDL_SetTextureAlphaMod( touch_joystick, get_option<int>("ANDROID_VIRTUAL_JOYSTICK_OPACITY")*0.01f*255.0f );
+
+    float longest_window_edge = std::max(WindowWidth, WindowHeight);
+
+    SDL_Rect dstrect;
+
+    // Draw deadzone range
+    dstrect.w = dstrect.h = ( get_option<float>("ANDROID_DEADZONE_RANGE") ) * longest_window_edge * 2;
+    dstrect.x = finger_down_x - dstrect.w/2;
+    dstrect.y = finger_down_y - dstrect.h/2;
+    SDL_RenderCopy( renderer, touch_joystick, NULL, &dstrect );
+
+    // Draw repeat delay range
+    dstrect.w = dstrect.h = ( get_option<float>("ANDROID_DEADZONE_RANGE") + get_option<float>("ANDROID_REPEAT_DELAY_RANGE") ) * longest_window_edge * 2;
+    dstrect.x = finger_down_x - dstrect.w/2;
+    dstrect.y = finger_down_y - dstrect.h/2;
+    SDL_RenderCopy( renderer, touch_joystick, NULL, &dstrect );
+}
+
 float clmp( float value, float low, float high ) { return ( value < low ) ? low : ( ( value > high ) ? high : value ); }
 float lerp(float t, float a, float b) { return (1.0f - t) * a + t * b; }
 
@@ -1687,8 +1740,9 @@ void update_finger_repeat_delay() {
     float delta_x = finger_curr_x - finger_down_x;
     float delta_y = finger_curr_y - finger_down_y;
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y);
-    float t = clmp((dist - (get_option<float>("ANDROID_DEADZONE_RANGE")*WindowWidth)) / std::max(0.01f, (get_option<float>("ANDROID_REPEAT_DELAY_RANGE"))*WindowWidth), 0.0f, 1.0f);
-    finger_repeat_delay = lerp(t, 
+    float longest_window_edge = std::max(WindowWidth, WindowHeight);
+    float t = clmp((dist - (get_option<float>("ANDROID_DEADZONE_RANGE")*longest_window_edge)) / std::max(0.01f, (get_option<float>("ANDROID_REPEAT_DELAY_RANGE"))*longest_window_edge), 0.0f, 1.0f);
+    finger_repeat_delay = lerp(t * t, 
         (unsigned long)std::max(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")), 
         (unsigned long)std::min(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")));
 }
@@ -1712,7 +1766,7 @@ void handle_finger_input(unsigned long ticks) {
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y); // in pixel space
     bool handle_diagonals = touch_input_context.is_action_registered("LEFTUP");
 
-    if (dist > (get_option<float>("ANDROID_DEADZONE_RANGE")*WindowWidth)) {
+    if (dist > (get_option<float>("ANDROID_DEADZONE_RANGE")*std::max(WindowWidth, WindowHeight))) {
         if (!handle_diagonals) {
             if (delta_x >= 0 && delta_y >= 0)
                 last_input = input_event(delta_x > delta_y ? KEY_RIGHT : KEY_DOWN, CATA_INPUT_KEYBOARD);
@@ -2214,12 +2268,25 @@ void CheckMessages()
               case SDL_FINGERMOTION:
                 //LOGD("SDL_FINGERMOTION: id:%lld x:%f y:%f", ev.tfinger.fingerId, ev.tfinger.x, ev.tfinger.y);
                     if (ev.tfinger.fingerId == 0) {
-                        if (is_quick_shortcut_touch)
-                            needupdate = true; // ensure menu redraws as we highlight different stuff
-                        else
+                        if (!is_quick_shortcut_touch)
                             update_finger_repeat_delay();
+                        needupdate = true; // ensure virtual joystick and quick shortcuts redraw as we interact
                         finger_curr_x = ev.tfinger.x * WindowWidth;
                         finger_curr_y = ev.tfinger.y * WindowHeight;
+
+                        if (get_option<bool>("ANDROID_VIRTUAL_JOYSTICK_FOLLOW")) {
+                            // If we've moved too far from joystick center, offset joystick center automatically
+                            float delta_x = finger_curr_x - finger_down_x;
+                            float delta_y = finger_curr_y - finger_down_y;
+                            float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y);
+                            float max_dist = (get_option<float>("ANDROID_DEADZONE_RANGE") + get_option<float>("ANDROID_REPEAT_DELAY_RANGE")) * std::max(WindowWidth, WindowHeight);
+                            if (dist > max_dist) {
+                                float delta_ratio = (dist / max_dist) - 1.0f;
+                                finger_down_x += delta_x * delta_ratio;
+                                finger_down_y += delta_y * delta_ratio;
+                            }                            
+                        }
+
                     }
                     else if (ev.tfinger.fingerId == 1) {
                         second_finger_curr_x = ev.tfinger.x * WindowWidth;
@@ -2234,10 +2301,9 @@ void CheckMessages()
                         finger_down_time = ticks;
                         finger_repeat_time = 0;
                         is_quick_shortcut_touch = get_quick_shortcut_under_finger() != NULL;
-                        if (is_quick_shortcut_touch)
-                            needupdate = true; // ensure menu redraws as we highlight different stuff
-                        else
+                        if (!is_quick_shortcut_touch)
                             update_finger_repeat_delay();
+                        needupdate = true; // ensure virtual joystick and quick shortcuts redraw as we interact
                     } 
                     else if (ev.tfinger.fingerId == 1) {
                         if (!is_quick_shortcut_touch) {
@@ -2300,12 +2366,13 @@ void CheckMessages()
                             handle_finger_input(ticks);                        
                         }
                     }
-                    needupdate = true; // ensure menu redraws as we highlight different stuff                            
                     second_finger_down_x = second_finger_curr_x = finger_down_x = finger_curr_x = -1.0f;
                     second_finger_down_y = second_finger_curr_y = finger_down_y = finger_curr_y = -1.0f;
                     is_two_finger_touch = false;
                     finger_down_time = 0;
                     finger_repeat_time = 0;
+                    needupdate = true; // ensure virtual joystick and quick shortcuts are updated properly
+                    refresh_display(); // as above, but actually redraw it now as well
                 }
                 else if (ev.tfinger.fingerId == 1) {
                     if (is_two_finger_touch) {

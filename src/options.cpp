@@ -1496,19 +1496,34 @@ void options_manager::init()
 
     mOptionsSort["android"]++;
 
-    add("ANDROID_HIDE_HOLDS", "android", _("Hide shortcuts during touch holds"),
-        _("If true, hides on-screen keyboard shortcuts during touch holds. Helps keep the view uncluttered while travelling long distances and navigating menus."),
+    add("ANDROID_SHOW_VIRTUAL_JOYSTICK", "android", _("Show virtual joystick"),
+        _("If true, show the virtual joystick when touching the screen. Gives a visual indicator of deadzone and maximum touch range."),
         true
         );
 
-    add("ANDROID_DEADZONE_RANGE", "android", _("Touch deadzone range"),
-        _("During a touch hold, sliding beyond this distance from the starting point will trigger directional input. Specified as a percentage of screen width."),
-        0.01f, 1.0f, 0.025f, 0.005f, COPT_NO_HIDE, "%.3f"
+    add("ANDROID_VIRTUAL_JOYSTICK_OPACITY", "android", _("Virtual joystick opacity"),
+        _("The background opacity of on-screen keyboard shortcuts."),
+        0, 100, 20
         );
 
-    add("ANDROID_REPEAT_DELAY_RANGE", "android", _("Repeat touch input range"),
-        _("During a touch hold, sliding this far away from the starting point will repeat at the fastest speed (see below). Specified as a percentage of screen width."),
-        0.1f, 1.0f, 0.25f, 0.05f
+    add("ANDROID_DEADZONE_RANGE", "android", _("Virtual joystick deadzone size"),
+        _("During a touch hold, sliding beyond this distance from the starting point will trigger directional input. Specified as a percentage of longest screen edge."),
+        0.01f, 0.2f, 0.04f, 0.001f, COPT_NO_HIDE, "%.3f"
+        );
+
+    add("ANDROID_REPEAT_DELAY_RANGE", "android", _("Virtual joystick size"),
+        _("During a touch hold, sliding this far away from the starting point will repeat input at the fastest speed (see below). Specified as a percentage of longest screen edge."),
+        0.05f, 0.5f, 0.10f, 0.001f, COPT_NO_HIDE, "%.3f"
+        );
+
+    add("ANDROID_VIRTUAL_JOYSTICK_FOLLOW", "android", _("Virtual joystick follows finger"),
+        _("If true, the virtual joystick will follow when sliding beyond its range."),
+        true
+        );
+
+    add("ANDROID_HIDE_HOLDS", "android", _("Hide shortcuts when virtual joystick in use"),
+        _("If true, hides on-screen keyboard shortcuts during touch holds. Helps keep the view uncluttered while travelling long distances and navigating menus."),
+        true
         );
 
     add("ANDROID_INITIAL_DELAY", "android", _("Repeat touch initial delay"),
@@ -1528,7 +1543,7 @@ void options_manager::init()
 
     add("ANDROID_VIBRATION", "android", _("Vibration duration"),
         _("If non-zero, vibrate the device for this long on input, in millisconds."),
-        0, 200, 20
+        0, 200, 10
         );
 
     mOptionsSort["android"]++;
@@ -1544,7 +1559,7 @@ void options_manager::init()
         );
 
     add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-manage contextual gameplay shortcuts"),
-        _("If true, contextual in-game shortcuts are added and removed automatically as needed."),
+        _("If true, contextual in-game shortcuts are added and removed automatically as needed: examine, close, butcher, move up/down, control vehicle, pickup, toggle enemy/safe mode, sleep."),
         true
         );
 
@@ -1564,8 +1579,8 @@ void options_manager::init()
         );
 
     add("ANDROID_SHORTCUT_REMOVE_TURNS", "android", _("Turns to remove unused gameplay shortcuts"),
-        _("If non-zero, unused gameplay shortcuts will be removed after this many turns (player actions)."),
-        0, 1000, 100
+        _("If non-zero, unused gameplay shortcuts will be removed after this many turns (as in discrete player actions, not world calendar turns)."),
+        0, 1000, 0
         );
 
     mOptionsSort["android"]++;
