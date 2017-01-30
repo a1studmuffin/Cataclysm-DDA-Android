@@ -2863,6 +2863,11 @@ void input_manager::set_timeout( const int t )
 
 extern WINDOW *mainwin;
 
+#ifdef __ANDROID__
+// Big dirty hack to ensure android intro message appears
+bool is_android_intro_message = false;
+#endif
+
 // This is how we're actually going to handle input events, SDL getch
 // is simply a wrapper around this.
 input_event input_manager::get_input_event(WINDOW *win) {
@@ -2873,7 +2878,8 @@ input_event input_manager::get_input_event(WINDOW *win) {
 
 #ifdef __ANDROID__
     // BUGFIX for experimental - don't force mainwin if NULL win was passed in, otherwise this ruins the Android intro message.
-    //if(win == NULL) win = mainwin;
+    if (!is_android_intro_message)
+        if(win == NULL) win = mainwin;
 #endif
 
     wrefresh(win);

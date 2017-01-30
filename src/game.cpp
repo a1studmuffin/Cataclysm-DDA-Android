@@ -13877,6 +13877,10 @@ void game::autosave()
     quicksave();    //Driving checks are handled by quicksave()
 }
 
+#if __ANDROID__
+extern bool is_android_intro_message;
+#endif
+
 void intro()
 {
     int maxx, maxy;
@@ -13951,7 +13955,9 @@ void intro()
               );
         fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
         wrefresh(tmp);
+        is_android_intro_message = true;
         inp_mngr.wait_for_any_key();
+        is_android_intro_message = false;
         werase(tmp);        
     }
 #endif
