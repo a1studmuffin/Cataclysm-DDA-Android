@@ -1810,7 +1810,7 @@ void update_finger_repeat_delay() {
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y);
     float longest_window_edge = std::max(WindowWidth, WindowHeight);
     float t = clmp((dist - (get_option<float>("ANDROID_DEADZONE_RANGE")*longest_window_edge)) / std::max(0.01f, (get_option<float>("ANDROID_REPEAT_DELAY_RANGE"))*longest_window_edge), 0.0f, 1.0f);
-    finger_repeat_delay = lerp(t * t, 
+    finger_repeat_delay = lerp(std::pow(t, get_option<float>("ANDROID_SENSITIVITY_POWER")), 
         (unsigned long)std::max(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")), 
         (unsigned long)std::min(get_option<int>("ANDROID_REPEAT_DELAY_MIN"), get_option<int>("ANDROID_REPEAT_DELAY_MAX")));
 }

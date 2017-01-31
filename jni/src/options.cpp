@@ -1478,41 +1478,48 @@ void options_manager::init()
         );
 
     add("ANDROID_QUICKSAVE", "android", _("Quicksave on app lose focus"),
-        _("EXPERIMENTAL: If true, quicksave whenever the app loses focus (screen locked, app moved into background etc.) Seems to work, but in theory data loss may occur if using a menu during quicksave."),
+        _("If true, quicksave whenever the app loses focus (screen locked, app moved into background etc.)"),
         false
         );
 
     mOptionsSort["android"]++;
-
-    add("ANDROID_KEYBOARD_SCREEN_SCALE", "android", _("Virtual keyboard screen scale"),
-        _("When the virtual keyboard is visible, scale the screen to prevent overlapping. Useful for text entry so you can see what you're typing."),
-        true
-        );
 
     add("ANDROID_AUTO_KEYBOARD", "android", _("Auto-manage virtual keyboard"),
         _("If true, automatically show/hide the virtual keyboard when necessary based on context. Turn this off if using a physical keyboard."),
         true
         );
 
+    add("ANDROID_KEYBOARD_SCREEN_SCALE", "android", _("Virtual keyboard screen scale"),
+        _("When the virtual keyboard is visible, scale the screen to prevent overlapping. Useful for text entry so you can see what you're typing."),
+        true
+        );
+
+    mOptionsSort["android"]++;
+
+    add("ANDROID_VIBRATION", "android", _("Vibration duration"),
+        _("If non-zero, vibrate the device for this long on input, in millisconds."),
+        0, 200, 10
+        );
+
     mOptionsSort["android"]++;
 
     add("ANDROID_SHOW_VIRTUAL_JOYSTICK", "android", _("Show virtual joystick"),
-        _("If true, show the virtual joystick when touching the screen. Gives a visual indicator of deadzone and maximum touch range."),
+        _("If true, show the virtual joystick when touching and holding the screen. Gives a visual indicator of deadzone and stick deflection."),
         true
         );
 
     add("ANDROID_VIRTUAL_JOYSTICK_OPACITY", "android", _("Virtual joystick opacity"),
-        _("The background opacity of on-screen keyboard shortcuts."),
+        _("The opacity of the on-screen virtual joystick, as a percentage."),
         0, 100, 20
         );
 
     add("ANDROID_DEADZONE_RANGE", "android", _("Virtual joystick deadzone size"),
-        _("During a touch hold, sliding beyond this distance from the starting point will trigger directional input. Specified as a percentage of longest screen edge."),
-        0.01f, 0.2f, 0.04f, 0.001f, COPT_NO_HIDE, "%.3f"
+        _("While using the virtual joystick, deflecting the stick beyond this distance will trigger directional input. Specified as a percentage of longest screen edge."),
+        0.01f, 0.2f, 0.03f, 0.001f, COPT_NO_HIDE, "%.3f"
         );
 
     add("ANDROID_REPEAT_DELAY_RANGE", "android", _("Virtual joystick size"),
-        _("During a touch hold, sliding this far away from the starting point will repeat input at the fastest speed (see below). Specified as a percentage of longest screen edge."),
+        _("While using the virtual joystick, deflecting the stick by this much will repeat input at the deflected rate (see below). Specified as a percentage of longest screen edge."),
         0.05f, 0.5f, 0.10f, 0.001f, COPT_NO_HIDE, "%.3f"
         );
 
@@ -1521,29 +1528,29 @@ void options_manager::init()
         true
         );
 
-    add("ANDROID_HIDE_HOLDS", "android", _("Hide shortcuts when virtual joystick in use"),
-        _("If true, hides on-screen keyboard shortcuts during touch holds. Helps keep the view uncluttered while travelling long distances and navigating menus."),
-        true
-        );
-
-    add("ANDROID_INITIAL_DELAY", "android", _("Repeat touch initial delay"),
-        _("During a touch hold, wait this long before repeating input, in milliseconds. Also used for tap/double-tap detection, flick detection and toggling quick shortcuts."),
-        150, 1000, 300
-        );
-
-    add("ANDROID_REPEAT_DELAY_MIN", "android", _("Repeat touch input delay (fastest)"),
-        _("How fast should touch input repeat during a touch hold, in milliseconds."),
-        50, 1000, 100
-        );
-
-    add("ANDROID_REPEAT_DELAY_MAX", "android", _("Repeat touch input delay (slowest)"),
-        _("How fast should touch input repeat during a touch hold, in milliseconds."),
+    add("ANDROID_REPEAT_DELAY_MAX", "android", _("Virtual joystick repeat rate (centered)"),
+        _("When the virtual joystick is centered, how fast should input events repeat, in milliseconds."),
         50, 1000, 400
         );
 
-    add("ANDROID_VIBRATION", "android", _("Vibration duration"),
-        _("If non-zero, vibrate the device for this long on input, in millisconds."),
-        0, 200, 10
+    add("ANDROID_REPEAT_DELAY_MIN", "android", _("Virtual joystick repeat rate (deflected)"),
+        _("When the virtual joystick is fully deflected, how fast should input events repeat, in milliseconds."),
+        50, 1000, 100
+        );
+
+    add("ANDROID_SENSITIVITY_POWER", "android", _("Virtual joystick repeat rate sensitivity"),
+        _("As the virtual joystick moves from centered to fully deflected, this value is an exponent that controls the blend between the two repeat rates defined above. 1.0 = linear."),
+        0.1f, 5.0f, 0.75f, 0.05f, COPT_NO_HIDE, "%.2f"
+        );
+
+    add("ANDROID_INITIAL_DELAY", "android", _("Input repeat delay"),
+        _("While touching the screen, wait this long before showing the virtual joystick and repeating input, in milliseconds. Also used to determine tap/double-tap detection, flick detection and toggling quick shortcuts."),
+        150, 1000, 300
+        );
+
+    add("ANDROID_HIDE_HOLDS", "android", _("Virtual joystick hides shortcuts"),
+        _("If true, hides on-screen keyboard shortcuts while using the virtual joystick. Helps keep the view uncluttered while travelling long distances and navigating menus."),
+        true
         );
 
     mOptionsSort["android"]++;
@@ -1559,17 +1566,17 @@ void options_manager::init()
         );
 
     add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-manage contextual gameplay shortcuts"),
-        _("If true, contextual in-game shortcuts are added and removed automatically as needed: examine, close, butcher, move up/down, control vehicle, pickup, toggle enemy/safe mode, sleep."),
+        _("If true, contextual in-game shortcuts are added and removed automatically as needed: examine, close, butcher, move up/down, control vehicle, pickup, toggle enemy + safe mode, sleep."),
         true
         );
 
-    add("ANDROID_SHORTCUT_AUTOADD_FRONT", "android", _("Contextual gameplay shortcuts to front"),
+    add("ANDROID_SHORTCUT_AUTOADD_FRONT", "android", _("Move contextual gameplay shortcuts to front"),
         _("If the above option is enabled, specifies whether contextual in-game shortcuts will be added to the front or back of the shortcuts list. True makes them easier to reach, False reduces shuffling of shortcut positions."),
         false
         );
 
     add("ANDROID_SHORTCUT_MOVE_FRONT", "android", _("Move used shortcuts to front"),
-        _("If true, using an existing shortcut will always move it to the front of the shortcuts list. If false, only shortcuts typed via virtual keyboard will move to the front."),
+        _("If true, using an existing shortcut will always move it to the front of the shortcuts list. If false, only shortcuts typed via keyboard will move to the front."),
         false
         );
 
@@ -1583,12 +1590,12 @@ void options_manager::init()
         0, 1000, 0
         );
 
-    mOptionsSort["android"]++;
-
     add("ANDROID_SHORTCUT_PERSISTENCE", "android", _("Shortcuts persistence"),
-        _("If true, shortcuts are saved/restored with each save game. If false, shortcuts reset to defaults every time a world is loaded."),
+        _("If true, shortcuts are saved/restored with each save game. If false, shortcuts reset between sessions."),
         true
         );
+
+    mOptionsSort["android"]++;
 
     add("ANDROID_SHORTCUT_POSITION", "android", _("Shortcuts position"),
         _("Switch between shortcuts on the left or on the right side."),
@@ -1596,17 +1603,17 @@ void options_manager::init()
         );
 
     add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (background)"),
-        _("The background opacity of on-screen keyboard shortcuts."),
+        _("The background opacity of on-screen keyboard shortcuts, as a percentage."),
         0, 100, 75
         );
 
     add("ANDROID_SHORTCUT_OPACITY_SHADOW", "android", _("Shortcut opacity (shadow)"),
-        _("The shadow opacity of on-screen keyboard shortcuts."),
+        _("The shadow opacity of on-screen keyboard shortcuts, as a percentage."),
         0, 100, 100
         );
 
     add("ANDROID_SHORTCUT_OPACITY_FG", "android", _("Shortcut opacity (text)"),
-        _("The foreground opacity of on-screen keyboard shortcuts."),
+        _("The foreground opacity of on-screen keyboard shortcuts, as a percentage."),
         0, 100, 100
         );
 
