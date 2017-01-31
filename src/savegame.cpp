@@ -117,7 +117,7 @@ void game::serialize(std::ostream & fout) {
                 const std::list<input_event>& qsl = e.second;
                 json.start_array();
                 for (const auto& event : qsl)
-                    json.write(event.sequence[0]);
+                    json.write(event.get_first_input());
                 json.end_array();
             }
             json.end_object(); // quick_shortcuts            
