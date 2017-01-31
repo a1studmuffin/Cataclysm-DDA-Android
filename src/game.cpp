@@ -1713,7 +1713,13 @@ bool game::cancel_activity_or_ignore_query(const char *reason, ...)
     ctxt.register_manual_key('I', "Ignore further distractions and finish");
 #endif
     do {
+#ifdef __ANDROID__
+        // Don't use popup() as this creates its own input context which will override the one above
+        ch = popup(stop_message, PF_NO_WAIT);
+        ch = inp_mngr.get_input_event().get_first_input();
+#else
         ch = popup(stop_message, PF_GET_KEY);
+#endif
     } while (ch != '\n' && ch != ' ' && ch != KEY_ESCAPE &&
              ch != 'Y' && ch != 'N' && ch != 'I' &&
              (force_uc || (ch != 'y' && ch != 'n' && ch != 'i')));
@@ -1899,11 +1905,6 @@ int game::inventory_item_menu(int pos, int iStartX, int iWidth, const inventory_
             switch( hint ) {
                 case HINT_CANT:
                     entry.text_color = c_ltgray;
-#ifdef __ANDROID__
-					// On Android I've taken the liberty of completely disabling 
-					// HINT_CANT inventory menu items, since they just complicate the UI.
-                    entry.enabled = false;
-#endif
                     break;
                 case HINT_IFFY:
                     entry.text_color = c_ltred;
