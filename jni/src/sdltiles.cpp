@@ -1792,6 +1792,13 @@ void draw_virtual_joystick() {
     dstrect.x = finger_down_x - dstrect.w/2;
     dstrect.y = finger_down_y - dstrect.h/2;
     SDL_RenderCopy( renderer, touch_joystick, NULL, &dstrect );
+
+    // Draw current touch position (50% size of repeat delay range)
+    dstrect.w = dstrect.h = dstrect.w/2;
+    dstrect.x = finger_down_x + (finger_curr_x - finger_down_x)/2 - dstrect.w/2;
+    dstrect.y = finger_down_y + (finger_curr_y - finger_down_y)/2 - dstrect.h/2;
+    SDL_RenderCopy( renderer, touch_joystick, NULL, &dstrect );
+
 }
 
 float clmp( float value, float low, float high ) { return ( value < low ) ? low : ( ( value > high ) ? high : value ); }
@@ -1940,6 +1947,7 @@ void CheckMessages()
         if (new_input_context && *new_input_context != touch_input_context) {
             //LOGD("touch_input_context changed, copying...");
             touch_input_context = *new_input_context;
+            needupdate = true;
         }
     }
 
