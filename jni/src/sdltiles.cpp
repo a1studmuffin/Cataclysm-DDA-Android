@@ -57,6 +57,7 @@
 #include "worldfactory.h"
 #include "action.h"
 #include "vehicle.h"
+#include "inventory.h"
 #include <jni.h>
 #endif
 
@@ -1453,7 +1454,7 @@ void add_quick_shortcut(quick_shortcuts_t& qsl, input_event& event, bool back, b
 // Given a quick shortcut list and a specific key, move that key to the front or back of the list.
 void reorder_quick_shortcut(quick_shortcuts_t& qsl, long key, bool back) {
         for(const auto& event : qsl) {
-            if (event.sequence[0] == key) {
+            if (event.get_first_input() == key) {
                 input_event event_copy = event;
                 qsl.remove(event);
                 add_quick_shortcut(qsl, event_copy, back, false);
@@ -1562,6 +1563,44 @@ bool remove_expired_actions_from_quick_shortcuts(const std::string& category) {
 	return ret;
 }
 
+void remove_stale_inventory_quick_shortcuts() {
+    if (get_option<bool>("ANDROID_INVENTORY_AUTOADD")) {
+        quick_shortcuts_t& qsl = quick_shortcuts_map["INVENTORY"];
+        quick_shortcuts_t::iterator it = qsl.begin();
+        bool in_inventory;
+        long key;
+        bool valid;
+        while (it != qsl.end()) {
+            key = (*it).get_first_input();
+            valid = inv_chars.valid(key);
+            in_inventory = false;
+            if (valid) {
+                in_inventory = g->u.inv.invlet_to_position(key) != INT_MIN;
+                if (!in_inventory) {
+                    // We couldn't find this item in the inventory, let's check worn items
+                    for (const auto& item : g->u.worn) {
+                        if (item.invlet == key) {
+                            in_inventory = true;
+                            break;
+                        }
+                    }
+                }
+                if (!in_inventory) {
+                    // We couldn't find it in worn items either, check weapon held
+                    if (g->u.weapon.invlet == key)
+                        in_inventory = true;
+                }
+            }
+            if (valid && !in_inventory) {
+                it = qsl.erase(it);
+            }
+            else {
+                ++it;
+            }
+        }
+    }    
+}
+
 void draw_quick_shortcuts() {
 
     if (!quick_shortcuts_enabled || 
@@ -1621,21 +1660,43 @@ void draw_quick_shortcuts() {
     for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it) {
         input_event& event = *it;
         std::string text = event.text;
+        long key = event.get_first_input();
         float default_text_scale = std::floor(0.75f * (height / font->fontheight)); // default for single character strings
         float text_scale = default_text_scale;
         if (text.empty() || text == " ") {
-            text = inp_mngr.get_keyname(event.get_first_input(), event.type);
+            text = inp_mngr.get_keyname(key, event.type);
             text_scale = std::min(text_scale, 0.75f * (width / (font->fontwidth * text.length())));
         }
         hovered = is_quick_shortcut_touch && hovered_quick_shortcut == &event;
         show_hint = hovered && SDL_GetTicks() - finger_down_time > (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY");
         std::string hint_text;
         if (show_hint) {
-            hint_text = touch_input_context.get_action_name(touch_input_context.input_to_action(event));
-            if (hint_text == "ERROR") {
-                hint_text = touch_input_context.get_action_name_for_manual_key(event.get_first_input());
+            if (touch_input_context.get_category() == "INVENTORY" && inv_chars.valid(key)) {
+                // Special case for inventory items - show the inventory item name as help text
+                hint_text = g->u.inv.find_item(g->u.inv.invlet_to_position(key)).tname(1, false);
+                if (hint_text == "none") {
+                    // We couldn't find this item in the inventory, let's check worn items
+                    for (const auto& item : g->u.worn) {
+                        if (item.invlet == key) {
+                            hint_text = item.tname(1, false);
+                            break;
+                        }
+                    }
+                }
+                if (hint_text == "none") {
+                    // We couldn't find it in worn items either, must be weapon held
+                    if (g->u.weapon.invlet == key)
+                        hint_text = g->u.weapon.tname(1, false);
+                }
             }
-            if (hint_text == "ERROR" || hint_text.empty())
+            else {
+                // All other screens - try and show the action name, either from registered actions or manually registered keys
+                hint_text = touch_input_context.get_action_name(touch_input_context.input_to_action(event));
+                if (hint_text == "ERROR") {
+                    hint_text = touch_input_context.get_action_name_for_manual_key(key);
+                }
+            }
+            if (hint_text == "ERROR" || hint_text == "none" || hint_text.empty())
                 show_hint = false;
         }
         if (shortcut_right)
@@ -2324,7 +2385,7 @@ void CheckMessages()
                             last_input = *quick_shortcut;
                             if (get_option<bool>("ANDROID_SHORTCUT_MOVE_FRONT")) {
                                 quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
-                                reorder_quick_shortcut(qsl, quick_shortcut->sequence[0], false);
+                                reorder_quick_shortcut(qsl, quick_shortcut->get_first_input(), false);
                             }
                             quick_shortcut->shortcut_last_used_action_counter = g->get_user_action_counter();
                         }

@@ -1553,7 +1553,7 @@ void options_manager::init()
         true
         );
 
-    add("ANDROID_INVENTORY_AUTOADD", "android", _("Add shortcuts for inventory items"),
+    add("ANDROID_INVENTORY_AUTOADD", "android", _("Add shortcuts for inventory selections"),
         _("If true, automatically add a shortcut for items selected via the inventory."),
         true
         );
