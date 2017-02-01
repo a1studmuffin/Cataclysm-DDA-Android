@@ -1555,6 +1555,11 @@ void options_manager::init()
 
     mOptionsSort["android"]++;
 
+    add("ANDROID_SHORTCUT_DEFAULTS", "android", _("Default gameplay shortcuts"),
+        _("The default set of gameplay shortcuts to show. Used on starting a new game and whenever all gameplay shortcuts are removed."),
+        "?mi", 30
+        );
+
     add("ANDROID_ACTIONMENU_AUTOADD", "android", _("Add shortcuts for action menu selections"),
         _("If true, automatically add a shortcut for actions selected via the in-game action menu."),
         true
