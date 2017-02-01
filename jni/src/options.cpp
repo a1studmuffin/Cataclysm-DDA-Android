@@ -1530,7 +1530,7 @@ void options_manager::init()
 
     add("ANDROID_REPEAT_DELAY_MAX", "android", _("Virtual joystick repeat rate (centered)"),
         _("When the virtual joystick is centered, how fast should input events repeat, in milliseconds."),
-        50, 1000, 400
+        50, 1000, 500
         );
 
     add("ANDROID_REPEAT_DELAY_MIN", "android", _("Virtual joystick repeat rate (deflected)"),
