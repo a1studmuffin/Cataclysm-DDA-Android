@@ -1614,10 +1614,9 @@ void draw_quick_shortcuts() {
     quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
     if (qsl.size() == 0 || touch_input_context.get_registered_manual_keys().size() > 0) {
         if (category == "DEFAULTMODE") {
-            // Start player out with inventory + map shortcut
-            add_best_key_for_action_to_quick_shortcuts(ACTION_INVENTORY, category, false);
-            add_best_key_for_action_to_quick_shortcuts(ACTION_MAP, category, false);
-            add_best_key_for_action_to_quick_shortcuts(ACTION_HELP, category, false);
+            const std::string default_gameplay_shortcuts = get_option<std::string>("ANDROID_SHORTCUT_DEFAULTS");
+            for (const auto& c : default_gameplay_shortcuts)
+                add_key_to_quick_shortcuts(c, category, true);
         }
         else {
             // This is an empty quick-shortcuts list, let's pre-populate it as best we can from the input context
@@ -1673,12 +1672,12 @@ void draw_quick_shortcuts() {
         if (show_hint) {
             if (touch_input_context.get_category() == "INVENTORY" && inv_chars.valid(key)) {
                 // Special case for inventory items - show the inventory item name as help text
-                hint_text = g->u.inv.find_item(g->u.inv.invlet_to_position(key)).tname(1, false);
+                hint_text = g->u.inv.find_item(g->u.inv.invlet_to_position(key)).display_name();
                 if (hint_text == "none") {
                     // We couldn't find this item in the inventory, let's check worn items
                     for (const auto& item : g->u.worn) {
                         if (item.invlet == key) {
-                            hint_text = item.tname(1, false);
+                            hint_text = item.display_name();
                             break;
                         }
                     }
@@ -1686,7 +1685,7 @@ void draw_quick_shortcuts() {
                 if (hint_text == "none") {
                     // We couldn't find it in worn items either, must be weapon held
                     if (g->u.weapon.invlet == key)
-                        hint_text = g->u.weapon.tname(1, false);
+                        hint_text = g->u.weapon.display_name();
                 }
             }
             else {
@@ -1744,6 +1743,7 @@ void draw_quick_shortcuts() {
                 // draw hint text
                 text_scale = default_text_scale;
                 hint_text = text + " " + hint_text;
+                hint_text = remove_color_tags(hint_text);
                 const float safe_margin = 0.9f;
                 if (WindowWidth * safe_margin < font->fontwidth * text_scale * hint_text.length())
                     text_scale *= (WindowWidth * safe_margin) / (font->fontwidth * text_scale * hint_text.length()); // scale to fit comfortably
