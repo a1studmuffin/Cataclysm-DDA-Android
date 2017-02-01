@@ -1504,7 +1504,7 @@ long choose_best_key_for_action(const std::string& action, const std::string& ca
 }
 
 bool add_key_to_quick_shortcuts(long key, const std::string& category, bool back) {
-    if (key >= 0) {
+    if (key > 0) {
         quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(category)];
         input_event event = input_event(key, CATA_INPUT_KEYBOARD);
         quick_shortcuts_t::iterator it = std::find(qsl.begin(), qsl.end(), event);
