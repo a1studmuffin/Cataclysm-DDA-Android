@@ -5,6 +5,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -88,6 +90,9 @@ public class SplashScreen extends Activity {
 
     private class InstallProgramTask extends AsyncTask<Void, Integer, Void> {
         private static final int TOTAL_FILES = 1410;
+        private final List<String> PRESERVE_SUBFOLDERS = Arrays.asList("sound", "mods", "gfx"); // don't delete custom subfolders under these folders
+        private final List<String> PRESERVE_FOLDERS = Arrays.asList("font"); // don't delete this folder
+        private final List<String> PRESERVE_FILES = Arrays.asList("user-default-mods.json"); // don't delete this file
         private int installedFiles = 0;
 
         @Override
@@ -103,15 +108,18 @@ public class SplashScreen extends Activity {
             }
             publishProgress(installedFiles);
 
-            // Clear out the old data if it exists
-            deleteRecursive(new File(getExternalFilesDir(null) + "/data"));
-            deleteRecursive(new File(getExternalFilesDir(null) + "/gfx"));
-            deleteRecursive(new File(getExternalFilesDir(null) + "/lua"));
+            AssetManager assetManager = getAssets();
+            String externalFilesDir = getExternalFilesDir(null).getPath();
 
-            // Install the new data
-            copyAssetFolder(getAssets(), "data", getExternalFilesDir(null) + "/data");
-            copyAssetFolder(getAssets(), "gfx", getExternalFilesDir(null) + "/gfx");
-            copyAssetFolder(getAssets(), "lua", getExternalFilesDir(null) + "/lua");
+            // Clear out the old data if it exists (but preserve custom folders + files)
+            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/data"));
+            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/gfx"));
+            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lua"));
+
+            // Install the new data over the top
+            copyAssetFolder(assetManager, "data", externalFilesDir + "/data");
+            copyAssetFolder(assetManager, "gfx", externalFilesDir + "/gfx");
+            copyAssetFolder(assetManager, "lua", externalFilesDir + "/lua");
 
             // Remember which version the installed data is 
             PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", VERSIONNAME).commit();
@@ -121,13 +129,50 @@ public class SplashScreen extends Activity {
             return null;
         }
 
-        // Pinched from http://stackoverflow.com/questions/4943629/how-to-delete-a-whole-folder-and-content
-        void deleteRecursive(File fileOrDirectory) {
-            if (fileOrDirectory.isDirectory())
+        void deleteRecursive(AssetManager assetManager, String externalFilesDir, File fileOrDirectory) {
+            String parentFolder = fileOrDirectory.getParentFile().getName().toLowerCase();
+            String fileOrDirectoryName = fileOrDirectory.getName().toLowerCase();
+            if (fileOrDirectory.isDirectory()) {
+                // Don't delete the folder if it is in the preserve folders list
+                if (PRESERVE_FOLDERS.contains(fileOrDirectoryName))
+                    return;
+
+                // Don't delete the folder if its parent is in the preserve subfolders list, and it doesn't exist in the APK assets (so must be custom data)
+                if (PRESERVE_SUBFOLDERS.contains(parentFolder) && !assetExists(assetManager, fileOrDirectory.getPath().substring(externalFilesDir.length()+1)))
+                    return;
+
                 for (File child : fileOrDirectory.listFiles())
-                    deleteRecursive(child);
+                    deleteRecursive(assetManager, externalFilesDir, child);
+            }
+            else {
+                // Don't delete the file if it's in the preserve files list
+                if (PRESERVE_FILES.contains(fileOrDirectoryName))
+                    return;
+            }
 
             fileOrDirectory.delete();
+        }
+
+        // Returns true if an asset exists in the APK (either a directory or a file)
+        // eg. assetExists("data/sound") or assetExists("data/font", "unifont.ttf") would both return true
+        private boolean assetExists(AssetManager assetManager, String assetPath) {
+            return assetExists(assetManager, assetPath, "");
+        }
+
+        private boolean assetExists(AssetManager assetManager, String assetPath, String assetName) {
+            try {
+                String[] files = assetManager.list(assetPath);
+                if (assetName.isEmpty())
+                    return files.length > 0; // folder exists                    
+                for (String file : files) {
+                    if (file.equalsIgnoreCase(assetName))
+                        return true; // file exists
+                }
+                return false;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
         }
 
         // Pinched from http://stackoverflow.com/questions/16983989/copy-directory-from-assets-to-data-folder
