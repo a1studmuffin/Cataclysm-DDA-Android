@@ -2130,6 +2130,18 @@ void CheckMessages()
                 quick_shortcuts_enabled = !quick_shortcuts_enabled;
                 quick_shortcuts_toggle_handled = true;
                 refresh_display();
+
+                // Display an Android toast message
+                {
+                    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+                    jobject activity = (jobject)SDL_AndroidGetActivity();
+                    jclass clazz(env->GetObjectClass(activity));
+                    jstring toast_message = env->NewStringUTF(quick_shortcuts_enabled ? "Shortcuts enabled" : "Shortcuts disabled");
+                    jmethodID method_id = env->GetMethodID(clazz, "toast", "(Ljava/lang/String;)V");
+                    env->CallVoidMethod(activity, method_id, toast_message);
+                    env->DeleteLocalRef(activity);
+                    env->DeleteLocalRef(clazz);
+                }
             }
         }
 
