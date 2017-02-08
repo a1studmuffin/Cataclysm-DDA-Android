@@ -13947,12 +13947,12 @@ void intro()
               "- Many screens within the game already have convenient shortcuts assigned,\n"
               "  but as you play, typing a key will add it to the shortcuts for that screen.\n"
               "- Remove a shortcut by flicking up on it. Hold it down to see help text.\n"
+              "- Reset shortcuts for a screen by flicking up to remove all shortcuts.\n"
               "- Android-specific options live under Settings > Options > Android.\n"
               "- Adjust terminal size under Settings > Options > Graphics (req's restart).\n"
               "- For the best keyboard experience, use an SSH-friendly virtual keyboard\n"
               "  such as \"Hacker's Keyboard\" on the Google Play store.\n"
-              " \n"
-              "Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"
+              "- Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"
               );
         fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
         wrefresh(tmp);
