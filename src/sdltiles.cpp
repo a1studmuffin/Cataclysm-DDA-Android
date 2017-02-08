@@ -1906,7 +1906,7 @@ void handle_finger_input(unsigned long ticks) {
             // Single tap (repeat) - held, so always treat this as a tap
             // We only allow repeats for waiting, not confirming in menus as that's a bit silly
             if (touch_input_context.get_category() == "DEFAULTMODE")
-                last_input = input_event('.', CATA_INPUT_KEYBOARD);
+                last_input = input_event(choose_best_key_for_action("pause", touch_input_context.get_category()), CATA_INPUT_KEYBOARD);
         }
         else {
             if (last_tap_time > 0 && ticks - last_tap_time < (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
@@ -1920,6 +1920,19 @@ void handle_finger_input(unsigned long ticks) {
             }
         }
     }
+}
+
+void android_vibrate() {
+    int vibration_ms = get_option<int>("ANDROID_VIBRATION");
+    if (vibration_ms > 0) {
+        JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+        jobject activity = (jobject)SDL_AndroidGetActivity();
+        jclass clazz(env->GetObjectClass(activity));
+        jmethodID method_id = env->GetMethodID(clazz, "vibrate", "(I)V");
+        env->CallVoidMethod(activity, method_id, vibration_ms);
+        env->DeleteLocalRef(activity);
+        env->DeleteLocalRef(clazz);
+    }    
 }
 
 #endif
@@ -2159,7 +2172,7 @@ void CheckMessages()
             // Single tap
             //LOGD("single tap, is_default_mode: %d category: %s", is_default_mode, touch_input_context.get_category().c_str());
             last_tap_time = ticks;
-            last_input = input_event(is_default_mode ? '.' : '\n', CATA_INPUT_KEYBOARD);
+            last_input = input_event(is_default_mode ? choose_best_key_for_action("pause", touch_input_context.get_category()) : '\n', CATA_INPUT_KEYBOARD);
             last_tap_time = 0;
             return;
         }
@@ -3003,18 +3016,14 @@ input_event input_manager::get_input_event(WINDOW *win) {
     } else if (last_input.type == CATA_INPUT_KEYBOARD) {
         previously_pressed_key = last_input.get_first_input();
 #ifdef __ANDROID__
-		int vibration_ms = get_option<int>("ANDROID_VIBRATION");
-		if (vibration_ms > 0) {
-            JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
-            jobject activity = (jobject)SDL_AndroidGetActivity();
-            jclass clazz(env->GetObjectClass(activity));
-            jmethodID method_id = env->GetMethodID(clazz, "vibrate", "(I)V");
-            env->CallVoidMethod(activity, method_id, vibration_ms);
-        	env->DeleteLocalRef(activity);
-        	env->DeleteLocalRef(clazz);
-        }
+        android_vibrate();
 #endif
     }
+#ifdef __ANDROID__
+    else if (last_input.type == CATA_INPUT_GAMEPAD) {
+        android_vibrate();
+    }
+#endif
 
     return last_input;
 }
