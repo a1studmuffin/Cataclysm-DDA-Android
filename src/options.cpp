@@ -1501,6 +1501,15 @@ void options_manager::init()
         0, 200, 10
         );
 
+    optionNames["slSensor"] = _("Sensor");
+    optionNames["slPortrait"] = _("Portrait");
+    optionNames["slLandscapeLeft"] = _("Landscape");
+    optionNames["slLandscapeRight"] = _("Rev Landscape");
+    add("ANDROID_SCREEN_ORIENTATION", "android", _("Screen orientation"),
+        _("Use the device's sensor to orient the screen automatically, or force a specific orientation."),
+        "slSensor,slPortrait,slLandscapeLeft,slLandscapeRight", "slSensor", COPT_CURSES_HIDE
+        );
+
     mOptionsSort["android"]++;
 
     add("ANDROID_SHOW_VIRTUAL_JOYSTICK", "android", _("Show virtual joystick"),

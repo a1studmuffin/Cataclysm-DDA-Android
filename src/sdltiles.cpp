@@ -1935,6 +1935,15 @@ void android_vibrate() {
     }    
 }
 
+void anroid_set_screen_orientation(int orientation) {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass clazz(env->GetObjectClass(activity));
+    jmethodID method_id = env->GetMethodID(clazz, "setRequestedOrientation", "(I)V");
+    env->CallVoidMethod(activity, method_id, orientation);
+    env->DeleteLocalRef(activity);
+    env->DeleteLocalRef(clazz);
+}
 #endif
 
 //Check for any window messages (keypress, paint, mousemove, etc)
@@ -1950,6 +1959,25 @@ void CheckMessages()
     if (visible_display_frame_dirty) {
        needupdate = true;
        visible_display_frame_dirty = false;
+    }
+
+    // Handle screen orientation changes
+    if (needupdate) {
+        // Ref: https://developer.android.com/reference/android/R.attr.html#screenOrientation
+        static std::string screenOrientation;
+        std::string newScreenOrientation = get_option<std::string>( "ANDROID_SCREEN_ORIENTATION" );
+        if (newScreenOrientation != screenOrientation) {
+            screenOrientation = newScreenOrientation;
+            if (screenOrientation == "slSensor") {
+                anroid_set_screen_orientation(-1); // SCREEN_ORIENTATION_UNSPECIFIED
+            } else if (screenOrientation == "slPortrait") {
+                anroid_set_screen_orientation(1); // SCREEN_ORIENTATION_PORTRAIT
+            } else if (screenOrientation == "slLandscapeLeft") {
+                anroid_set_screen_orientation(0); // SCREEN_ORIENTATION_LANDSCAPE
+            } else if (screenOrientation == "slLandscapeRight") {
+                anroid_set_screen_orientation(8); // SCREEN_ORIENTATION_REVERSE_LANDSCAPE.
+            } 
+        }        
     }
 
     unsigned long ticks = SDL_GetTicks();
