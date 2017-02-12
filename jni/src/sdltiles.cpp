@@ -352,6 +352,14 @@ bool WinCreate()
         display = 0;
     }
 
+#ifdef __ANDROID__
+    // Bugfix for red screen on Samsung S3/Mali
+	// https://forums.libsdl.org/viewtopic.php?t=11445
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5); 
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 6); 
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5); 
+#endif
+
     window = SDL_CreateWindow(version.c_str(),
             SDL_WINDOWPOS_CENTERED_DISPLAY( display ),
             SDL_WINDOWPOS_CENTERED_DISPLAY( display ),
