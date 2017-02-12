@@ -1845,19 +1845,19 @@ void handle_finger_input(unsigned long ticks) {
     if (dist > (get_option<float>("ANDROID_DEADZONE_RANGE")*std::max(WindowWidth, WindowHeight))) {
         if (!handle_diagonals) {
             if (delta_x >= 0 && delta_y >= 0)
-                last_input = input_event(delta_x > delta_y ? JOY_RIGHT : JOY_DOWN, CATA_INPUT_GAMEPAD);
+                last_input = input_event(delta_x > delta_y ? KEY_RIGHT : KEY_DOWN, CATA_INPUT_KEYBOARD);
             else if (delta_x < 0 && delta_y >= 0)
-                last_input = input_event(-delta_x > delta_y ? JOY_LEFT : JOY_DOWN, CATA_INPUT_GAMEPAD);
+                last_input = input_event(-delta_x > delta_y ? KEY_LEFT : KEY_DOWN, CATA_INPUT_KEYBOARD);
             else if (delta_x >= 0 && delta_y < 0)
-                last_input = input_event(delta_x > -delta_y ? JOY_RIGHT : JOY_UP, CATA_INPUT_GAMEPAD);
+                last_input = input_event(delta_x > -delta_y ? KEY_RIGHT : KEY_UP, CATA_INPUT_KEYBOARD);
             else if (delta_x < 0 && delta_y < 0)
-                last_input = input_event(-delta_x > -delta_y ? JOY_LEFT : JOY_UP, CATA_INPUT_GAMEPAD);
+                last_input = input_event(-delta_x > -delta_y ? KEY_LEFT : KEY_UP, CATA_INPUT_KEYBOARD);
         }
         else {
             if (delta_x > 0) {
                 if (std::abs(delta_y) < delta_x * 0.5f) {
                     // swipe right
-                    last_input = input_event(JOY_RIGHT, CATA_INPUT_GAMEPAD);
+                    last_input = input_event(KEY_RIGHT, CATA_INPUT_KEYBOARD);
                 }
                 else if (std::abs(delta_y) < delta_x * 2.0f) {
                     if (delta_y < 0) {
@@ -1872,18 +1872,18 @@ void handle_finger_input(unsigned long ticks) {
                 else {
                     if (delta_y < 0) {
                         // swipe up
-                        last_input = input_event(JOY_UP, CATA_INPUT_GAMEPAD);
+                        last_input = input_event(KEY_UP, CATA_INPUT_KEYBOARD);
                     }
                     else {
                         // swipe down
-                        last_input = input_event(JOY_DOWN, CATA_INPUT_GAMEPAD);
+                        last_input = input_event(KEY_DOWN, CATA_INPUT_KEYBOARD);
                     }
                 }
             }
             else {
                 if (std::abs(delta_y) < -delta_x * 0.5f) {
                     // swipe left
-                    last_input = input_event(JOY_LEFT, CATA_INPUT_GAMEPAD);
+                    last_input = input_event(KEY_LEFT, CATA_INPUT_KEYBOARD);
                 }
                 else if (std::abs(delta_y) < -delta_x * 2.0f) {
                     if (delta_y < 0) {
@@ -1899,11 +1899,11 @@ void handle_finger_input(unsigned long ticks) {
                 else {
                     if (delta_y < 0) {
                         // swipe up
-                        last_input = input_event(JOY_UP, CATA_INPUT_GAMEPAD);
+                        last_input = input_event(KEY_UP, CATA_INPUT_KEYBOARD);
                     }
                     else {
                         // swipe down
-                        last_input = input_event(JOY_DOWN, CATA_INPUT_GAMEPAD);
+                        last_input = input_event(KEY_DOWN, CATA_INPUT_KEYBOARD);
                     }
                 }
             }
