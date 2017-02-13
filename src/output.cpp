@@ -652,8 +652,8 @@ bool internal_query_yn( const char *mes, va_list ap )
 #ifdef __ANDROID__
     // Ensure proper android input context for touch
     input_context ctxt("YESNO");
-    ctxt.register_manual_key('Y');
-    ctxt.register_manual_key('N');
+    ctxt.register_manual_key(ucselectors[0]);
+    ctxt.register_manual_key(ucselectors[1]);
 #endif
 
     while( ch != '\n' && ch != ' ' && ch != KEY_ESCAPE ) {
@@ -1897,7 +1897,58 @@ std::string rewrite_vsnprintf( const char *msg )
     return rewritten_msg.str();
 }
 
+#ifdef __ANDROID__
+std::string vstring_format_internal( char const *format, va_list args );
+#endif
 std::string vstring_format( char const *format, va_list args )
+#ifdef __ANDROID__
+{
+    try {
+        // Warning: Very crappy hack ahead! Read for your own amusement. 
+        // For some reason on Android, vsnprintf doesn't work with char values >= 128 - could be this bug:
+        // https://code.google.com/p/android/issues/detail?id=78669
+        // This is a really dumb workaround until I can get to the bottom of it... (aka. This is how it's going to ship.)
+        // The basic idea:
+        // Convert two strings, one with UTF-8 multibyte characters swapped with the character 'M' and the other with 'D'.
+        // Then get the result strings, and fill in the 'M'/'D' substitutes with original UTF-8 multibyte characters from the format string.
+        // Why 'M' and 'D'? I figured I should put my name to this turd. You're welcome. - Michael Davies
+        std::string formatA(format), formatB(format);
+        bool hasMultibyteChars = false;
+        for (int i = 0, n = formatA.length(); i < n; ++i) {
+            if (formatA[i] >= 128) { // UTF-8 multibyte char
+                formatA[i] = 'M';
+                formatB[i] = 'D';
+                hasMultibyteChars = true;
+            }
+        }
+        if (!hasMultibyteChars)
+            return vstring_format_internal(format, args);
+        std::string resultA(vstring_format_internal(formatA.c_str(), args));
+        std::string resultB(vstring_format_internal(formatB.c_str(), args));
+        char const* f = format;
+        for (int i = 0, n = resultA.length(); i < n; ++i) {
+            if (resultA[i] == 'M' && resultB[i] == 'D') {
+                while (*f > 0 && *f < 128) {
+                    // skip until we reach null character or UTF-8 multibyte character 
+                    f++;
+                }
+                resultA[i] = *f;
+                if (*f == 0) {
+					// we shouldn't ever get here, but let's play it safe.
+                    break;
+                }
+                f++;
+            }
+        }
+        return resultA;
+    } catch( const std::exception &err ) {
+        LOGD("vstring_format error: %s", err.what());
+        return std::string(format);
+    }
+}
+
+std::string vstring_format_internal( char const *format, va_list args )
+#endif
 {
     errno = 0; // Clear errno before trying
     std::vector<char> buffer( 1024, '\0' );

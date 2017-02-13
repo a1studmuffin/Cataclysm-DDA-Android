@@ -1753,11 +1753,12 @@ void draw_quick_shortcuts() {
                 hint_text = text + " " + hint_text;
                 hint_text = remove_color_tags(hint_text);
                 const float safe_margin = 0.9f;
-                if (WindowWidth * safe_margin < font->fontwidth * text_scale * hint_text.length())
-                    text_scale *= (WindowWidth * safe_margin) / (font->fontwidth * text_scale * hint_text.length()); // scale to fit comfortably
+                int hint_length = utf8_width(hint_text);
+                if (WindowWidth * safe_margin < font->fontwidth * text_scale * hint_length)
+                    text_scale *= (WindowWidth * safe_margin) / (font->fontwidth * text_scale * hint_length); // scale to fit comfortably
                 SDL_RenderSetScale( renderer, text_scale, text_scale);
                 font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_SHADOW")*0.01f;
-                text_x = (WindowWidth - ((font->fontwidth  * hint_text.length()) * text_scale)) * 0.5f / text_scale;
+                text_x = (WindowWidth - ((font->fontwidth  * hint_length) * text_scale)) * 0.5f / text_scale;
                 text_y = (WindowHeight - font->fontheight * text_scale) * 0.5f / text_scale;
                 font->OutputChar( hint_text, text_x+1, text_y+1, 0 );
                 font->opacity = get_option<int>("ANDROID_SHORTCUT_OPACITY_FG")*0.01f;

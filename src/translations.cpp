@@ -19,7 +19,11 @@ const char *pgettext( const char *context, const char *msgid )
     context_id += msgid;
     // null domain, uses global translation domain
     const char *msg_ctxt_id = context_id.c_str();
+#ifdef __ANDROID__
+    const char *translation = gettext( msg_ctxt_id );
+#else
     const char *translation = dcgettext( NULL, msg_ctxt_id, LC_MESSAGES );
+#endif
     if( translation == msg_ctxt_id ) {
         return msgid;
     } else {
@@ -32,7 +36,11 @@ const char *npgettext( const char *const context, const char *const msgid,
 {
     const std::string context_id = std::string( context ) + '\004' + msgid;
     const char *const msg_ctxt_id = context_id.c_str();
+#ifdef __ANDROID__
+    const char *const translation = ngettext( msg_ctxt_id, msgid_plural, n );
+#else
     const char *const translation = dcngettext( nullptr, msg_ctxt_id, msgid_plural, n, LC_MESSAGES );
+#endif
     if( translation == msg_ctxt_id ) {
         return n == 1 ? msgid : msgid_plural;
     } else {
@@ -75,6 +83,12 @@ void set_language()
 
     // Step 2. Bind to gettext domain.
     const char *locale_dir;
+#ifdef __ANDROID__
+    // Since we're using libintl-lite instead of libintl on Android, we hack the locale_dir to point directly to the .mo file.
+    // This is because of our hacky libintl-lite bindtextdomain() implementation.
+    auto env = getenv( "LANGUAGE" );
+    locale_dir = std::string( FILENAMES["base_path"] + "lang/mo/" + (env ? env : "none") + "/LC_MESSAGES/cataclysm-dda.mo").c_str();
+#else
 #if (defined __linux__ || (defined MACOSX && !defined TILES))
     if( !FILENAMES["base_path"].empty() ) {
         locale_dir = std::string( FILENAMES["base_path"] + "share/locale" ).c_str();
@@ -84,6 +98,7 @@ void set_language()
 #else
     locale_dir = "lang/mo";
 #endif // __linux__
+#endif // __ANDROID__
 
     bindtextdomain( "cataclysm-dda", locale_dir );
     bind_textdomain_codeset( "cataclysm-dda", "UTF-8" );
