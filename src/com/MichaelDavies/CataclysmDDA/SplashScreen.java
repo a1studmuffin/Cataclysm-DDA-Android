@@ -25,7 +25,7 @@ import android.view.*;
 import android.widget.ImageView;
 
 public class SplashScreen extends Activity {
-    private static final String VERSIONNAME = "0.C-20818-g6ec9931";
+    private static final String VERSIONNAME = "0.C-20818-g6ec9931-2";
     private static final String TAG = "Splash";
     private static final int INSTALL_DIALOG_ID = 0;
     private ProgressDialog installDialog;
@@ -89,7 +89,7 @@ public class SplashScreen extends Activity {
     }
 
     private class InstallProgramTask extends AsyncTask<Void, Integer, Void> {
-        private static final int TOTAL_FILES = 1410;
+        private static final int TOTAL_FILES = 1422;
         private final List<String> PRESERVE_SUBFOLDERS = Arrays.asList("sound", "mods", "gfx"); // don't delete custom subfolders under these folders
         private final List<String> PRESERVE_FOLDERS = Arrays.asList("font"); // don't delete this folder
         private final List<String> PRESERVE_FILES = Arrays.asList("user-default-mods.json"); // don't delete this file
@@ -115,11 +115,13 @@ public class SplashScreen extends Activity {
             deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/data"));
             deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/gfx"));
             deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lua"));
+            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lang"));
 
             // Install the new data over the top
             copyAssetFolder(assetManager, "data", externalFilesDir + "/data");
             copyAssetFolder(assetManager, "gfx", externalFilesDir + "/gfx");
             copyAssetFolder(assetManager, "lua", externalFilesDir + "/lua");
+            copyAssetFolder(assetManager, "lang", externalFilesDir + "/lang");
 
             // Remember which version the installed data is 
             PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", VERSIONNAME).commit();
