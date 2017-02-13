@@ -1616,6 +1616,11 @@ void options_manager::init()
         "left,right", "left"
         );
 
+    add("ANDROID_SHORTCUT_OVERLAP", "android", _("Shortcuts overlap screen"),
+        _("If true, shortcuts will be drawn transparently overlapping the game screen. If false, the game screen size will be reduced to fit the shortcuts below."),
+        true
+        );
+
     add("ANDROID_SHORTCUT_OPACITY_BG", "android", _("Shortcut opacity (background)"),
         _("The background opacity of on-screen keyboard shortcuts, as a percentage."),
         0, 100, 75

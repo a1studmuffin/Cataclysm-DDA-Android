@@ -715,6 +715,8 @@ void BitmapFont::OutputChar(long t, int x, int y, unsigned char color)
 void draw_quick_shortcuts();
 void draw_virtual_joystick();
 
+static bool quick_shortcuts_enabled = true;
+
 extern "C" {
 
 static bool visible_display_frame_dirty = false;
@@ -757,7 +759,10 @@ void refresh_display()
     int DisplayBufferHeight = TERMINAL_HEIGHT * fontheight;
     SDL_Rect dstrect;
     float DisplayBufferAspect = DisplayBufferWidth / (float)DisplayBufferHeight;
-    float WindowAspect = WindowWidth / (float)WindowHeight;
+    float WindowHeightLessShortcuts = (float)WindowHeight;
+    if (!get_option<bool>( "ANDROID_SHORTCUT_OVERLAP" ) && quick_shortcuts_enabled)
+        WindowHeightLessShortcuts -= get_option<int>( "ANDROID_SHORTCUT_HEIGHT" );
+    float WindowAspect = WindowWidth / (float)WindowHeightLessShortcuts;
     if (WindowAspect < DisplayBufferAspect)
     {
         dstrect.x = 0;
@@ -767,10 +772,10 @@ void refresh_display()
     }
     else
     {
-        dstrect.x = 0.5f * (WindowWidth - (WindowHeight * DisplayBufferAspect));
+        dstrect.x = 0.5f * (WindowWidth - (WindowHeightLessShortcuts * DisplayBufferAspect));
         dstrect.y = 0;
-        dstrect.w = WindowHeight * DisplayBufferAspect;
-        dstrect.h = WindowHeight;
+        dstrect.w = WindowHeightLessShortcuts * DisplayBufferAspect;
+        dstrect.h = WindowHeightLessShortcuts;
     }
 
 	// Make sure the destination rectangle fits within the visible area
@@ -1364,7 +1369,6 @@ static unsigned long last_tap_time = 0; // the last time a single tap was detect
 static unsigned long ac_back_down_time = 0; // when did the hardware back button start being pressed? 0 if not touching, otherwise the time in milliseconds.
 static bool is_two_finger_touch = false; // has a second finger touched the screen while the first was touching?
 static bool is_quick_shortcut_touch = false; // did this touch start on a quick shortcut?
-static bool quick_shortcuts_enabled = true;
 static bool quick_shortcuts_toggle_handled = false;
 unsigned long finger_repeat_delay = 500; // the current finger repeat delay - will be somewhere between the min/max values depending on user input
 
