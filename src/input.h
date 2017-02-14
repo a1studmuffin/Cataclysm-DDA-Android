@@ -343,6 +343,7 @@ class input_context
             handling_coordinate_input( false ) {
 #ifdef __ANDROID__
                 input_context_stack.push_back(this);
+                allow_text_entry = false;
                 //LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
 #endif
             };
@@ -352,6 +353,7 @@ class input_context
             category( category ), handling_coordinate_input( false ) {
 #ifdef __ANDROID__
                 input_context_stack.push_back(this);
+                allow_text_entry = false;
                 //LOGD("input_context: Pushed back %s (size: %d, last: %s)", category.c_str(), (int)input_context_stack.size(), (*--input_context_stack.end())->category.c_str());
 #endif
             };
@@ -374,6 +376,10 @@ class input_context
 
         std::vector<manual_key> registered_manual_keys;
 
+        // If true, prevent virtual keyboard from dismissing after a key press while this input context is active.
+        // NOTE: This won't auto-bring up the virtual keyboard, for that use sdltiles.cpp is_string_input()
+        bool allow_text_entry;
+
         void register_manual_key(manual_key mk);
         void register_manual_key(long key, const std::string text = "");
 
@@ -393,6 +399,7 @@ class input_context
     	input_context& operator=(const input_context& other) {
         	registered_actions = other.registered_actions;
         	registered_manual_keys = other.registered_manual_keys;
+            allow_text_entry = other.allow_text_entry;
         	registered_any_input = other.registered_any_input;
         	category = other.category;
         	coordinate_x = other.coordinate_x;
@@ -409,6 +416,7 @@ class input_context
         	return category == other.category &&
             	registered_actions == other.registered_actions &&
             	registered_manual_keys == other.registered_manual_keys &&
+                allow_text_entry == other.allow_text_entry &&
             	registered_any_input == other.registered_any_input &&
             	coordinate_x == other.coordinate_x &&
             	coordinate_y == other.coordinate_y &&

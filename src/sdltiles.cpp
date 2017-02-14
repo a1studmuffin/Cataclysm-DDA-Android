@@ -2000,6 +2000,15 @@ void CheckMessages()
         input_context* new_input_context = *--input_context::input_context_stack.end();
         if (new_input_context && *new_input_context != touch_input_context) {
             //LOGD("touch_input_context changed, copying...");
+
+            // If we were in an allow_text_entry input context, and text input is still active, and we're auto-managing keyboard, hide it.
+            if (touch_input_context.allow_text_entry && 
+                !new_input_context->allow_text_entry && 
+                !is_string_input(*new_input_context) && 
+                SDL_IsTextInputActive() && 
+                get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                SDL_StopTextInput();
+
             touch_input_context = *new_input_context;
             needupdate = true;
         }
@@ -2289,7 +2298,7 @@ void CheckMessages()
                 } else {
                     last_input = input_event(lc, CATA_INPUT_KEYBOARD);
 #ifdef __ANDROID__
-                    if (!is_string_input(touch_input_context)) {
+                    if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
                         if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
                             SDL_StopTextInput();
 
@@ -2342,7 +2351,7 @@ void CheckMessages()
                     last_input.text = ev.text.text;
 
 #ifdef __ANDROID__
-                    if (!is_string_input(touch_input_context)) {
+                    if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
                         if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
                             SDL_StopTextInput();
 
