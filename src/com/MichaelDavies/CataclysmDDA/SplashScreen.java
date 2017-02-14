@@ -15,8 +15,11 @@ import android.app.Activity;
 import android.app.Application;
 import android.app.Dialog;
 import android.app.ProgressDialog;
+import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.os.*;
 import android.preference.PreferenceManager;
@@ -25,10 +28,20 @@ import android.view.*;
 import android.widget.ImageView;
 
 public class SplashScreen extends Activity {
-    private static final String VERSIONNAME = "0.C-20818-g6ec9931-2";
     private static final String TAG = "Splash";
     private static final int INSTALL_DIALOG_ID = 0;
     private ProgressDialog installDialog;
+
+    private String getVersionName() {
+        try {
+            Context context = getApplicationContext();
+            PackageInfo pInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return pInfo.versionName;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "error";
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,7 +49,7 @@ public class SplashScreen extends Activity {
         super.onCreate(savedInstanceState);
 
         // Start the game if already installed, otherwise start installing...
-        if (VERSIONNAME.equals(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("installed", ""))) {
+        if (getVersionName().equals(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("installed", ""))) {
             startGameActivity(false);
         }
         else {
@@ -124,7 +137,7 @@ public class SplashScreen extends Activity {
             copyAssetFolder(assetManager, "lang", externalFilesDir + "/lang");
 
             // Remember which version the installed data is 
-            PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", VERSIONNAME).commit();
+            PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", getVersionName()).commit();
 
             publishProgress(++installedFiles);
             Log.d(TAG, "Total number of files copied: " + installedFiles);
