@@ -260,8 +260,8 @@ const char* ngettext(const char* origStr, const char* origStrPlural, unsigned lo
         // Now determine correct plural form to use. This data is described in .PO files "Plural-Forms" metadata.
         const char* language = getenv("LANGUAGE");
 
-        // Bail out if we don't have data
-        if (!translatedStr || !language) {
+        // Bail out if we don't have data, or the result of gettext is the exact same pointer to the source string (so we don't have a translated megastring to look at)
+        if (!translatedStr || !language || translatedStr == origStr) {
             if (n == 1)
                 return origStr;
             else
