@@ -1542,7 +1542,11 @@ void inventory_compare_selector::toggle_entry( inventory_entry *entry )
 inventory_drop_selector::inventory_drop_selector( const player &p,
         const inventory_selector_preset &preset ) :
     inventory_multiselector( p, preset, _( "ITEMS TO DROP" ) ),
-    max_chosen_count( std::numeric_limits<decltype( max_chosen_count )>::max() ) {}
+    max_chosen_count( std::numeric_limits<decltype( max_chosen_count )>::max() ) {
+#ifdef __ANDROID__
+    ctxt.allow_text_entry = true; // allow user to type a drop number without dismissing virtual keyboard after each keypress
+#endif
+    }
 
 std::list<std::pair<int, int>> inventory_drop_selector::execute()
 {
