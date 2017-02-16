@@ -1485,7 +1485,7 @@ void options_manager::init()
     mOptionsSort["android"]++;
 
     add("ANDROID_AUTO_KEYBOARD", "android", _("Auto-manage virtual keyboard"),
-        _("If true, automatically show/hide the virtual keyboard when necessary based on context. Turn this off if using a physical keyboard."),
+        _("If true, automatically show/hide the virtual keyboard when necessary based on context. If false, virtual keyboard must be toggled manually."),
         true
         );
 
