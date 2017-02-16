@@ -177,7 +177,7 @@ public class SDLActivity extends Activity {
 
         mLayout = new RelativeLayout(this);
         mLayout.addView(mSurface);
-
+        mLayout.setVisibility(View.INVISIBLE); // we will make this visible later through C++ call -> Java
         setContentView(mLayout);
 
         mLayout.getViewTreeObserver().addOnGlobalLayoutListener(
