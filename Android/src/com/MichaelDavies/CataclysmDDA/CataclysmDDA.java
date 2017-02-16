@@ -4,6 +4,7 @@ import org.libsdl.app.SDLActivity;
 import android.util.Log;
 import android.content.Context;
 import android.os.Vibrator;
+import android.view.View;
 import android.widget.Toast;
 import android.content.res.Configuration;
 
@@ -33,5 +34,17 @@ public class CataclysmDDA extends SDLActivity {
 
     private boolean isHardwareKeyboardAvailable() {
         return getResources().getConfiguration().keyboard == Configuration.KEYBOARD_QWERTY;
+    }
+
+    public void show_sdl_surface() {
+        try {
+            runOnUiThread(new Runnable() {
+                public void run() {
+                    mLayout.setVisibility(View.VISIBLE);
+                }
+            });
+        } catch(Exception e) {
+            System.err.println(e.getMessage());
+        }
     }
 }

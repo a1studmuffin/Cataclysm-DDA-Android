@@ -1371,6 +1371,7 @@ static bool is_two_finger_touch = false; // has a second finger touched the scre
 static bool is_quick_shortcut_touch = false; // did this touch start on a quick shortcut?
 static bool quick_shortcuts_toggle_handled = false;
 unsigned long finger_repeat_delay = 500; // the current finger repeat delay - will be somewhere between the min/max values depending on user input
+static bool needs_sdl_surface_visibility_refresh = true; // should we make sure the sdl surface is visible? set to true whenever the SDL window is shown.
 
 // Quick shortcuts container: maps the touch input context category (std::string) to a std::list of input_events.
 typedef std::list<input_event> quick_shortcuts_t;
@@ -2010,6 +2011,21 @@ void CheckMessages()
     if (android_is_hardware_keyboard_available() && !SDL_IsTextInputActive())
         SDL_StartTextInput();
 
+    // Make sure the SDL surface view is visible, otherwise the "Z" loading screen is visible.
+    if (needs_sdl_surface_visibility_refresh)
+    {
+        needs_sdl_surface_visibility_refresh = false;
+
+		// Call Java show_sdl_surface()
+        JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+        jobject activity = (jobject)SDL_AndroidGetActivity();
+        jclass clazz(env->GetObjectClass(activity));
+        jmethodID method_id = env->GetMethodID(clazz, "show_sdl_surface", "()V");
+        env->CallVoidMethod(activity, method_id);
+        env->DeleteLocalRef(activity);
+        env->DeleteLocalRef(clazz);        
+    }
+
     // Copy the current input context
     if (input_context::input_context_stack.size() > 0) {
         input_context* new_input_context = *--input_context::input_context_stack.end();
@@ -2277,6 +2293,9 @@ void CheckMessages()
                 case SDL_WINDOWEVENT_EXPOSED:
                 case SDL_WINDOWEVENT_RESTORED:
                     needupdate = true;
+#ifdef __ANDROID__
+					needs_sdl_surface_visibility_refresh = true;
+#endif
                     break;
                 default:
                     break;
