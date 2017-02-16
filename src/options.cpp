@@ -1497,7 +1497,7 @@ void options_manager::init()
     mOptionsSort["android"]++;
 
     add("ANDROID_VIBRATION", "android", _("Vibration duration"),
-        _("If non-zero, vibrate the device for this long on input, in millisconds."),
+        _("If non-zero, vibrate the device for this long on input, in millisconds. Ignored if hardware keyboard connected."),
         0, 200, 10
         );
 

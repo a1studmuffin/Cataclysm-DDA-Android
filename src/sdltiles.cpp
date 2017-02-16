@@ -1935,9 +1935,20 @@ void handle_finger_input(unsigned long ticks) {
     }
 }
 
+bool android_is_hardware_keyboard_available() {
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    jclass clazz(env->GetObjectClass(activity));
+    jmethodID method_id = env->GetMethodID(clazz, "isHardwareKeyboardAvailable", "()Z");
+    jboolean ans = env->CallBooleanMethod(activity, method_id);
+    env->DeleteLocalRef(activity);
+    env->DeleteLocalRef(clazz);
+    return ans;
+}
+
 void android_vibrate() {
     int vibration_ms = get_option<int>("ANDROID_VIBRATION");
-    if (vibration_ms > 0) {
+    if (vibration_ms > 0 && !android_is_hardware_keyboard_available()) {
         JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
         jobject activity = (jobject)SDL_AndroidGetActivity();
         jclass clazz(env->GetObjectClass(activity));
@@ -1994,6 +2005,10 @@ void CheckMessages()
     }
 
     unsigned long ticks = SDL_GetTicks();
+
+    // Force text input mode if hardware keyboard is available.
+    if (android_is_hardware_keyboard_available() && !SDL_IsTextInputActive())
+        SDL_StartTextInput();
 
     // Copy the current input context
     if (input_context::input_context_stack.size() > 0) {
@@ -2199,7 +2214,7 @@ void CheckMessages()
                     JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
                     jobject activity = (jobject)SDL_AndroidGetActivity();
                     jclass clazz(env->GetObjectClass(activity));
-                    jstring toast_message = env->NewStringUTF(quick_shortcuts_enabled ? "Shortcuts enabled" : "Shortcuts disabled");
+                    jstring toast_message = env->NewStringUTF(quick_shortcuts_enabled ? "Shortcuts visible" : "Shortcuts hidden");
                     jmethodID method_id = env->GetMethodID(clazz, "toast", "(Ljava/lang/String;)V");
                     env->CallVoidMethod(activity, method_id, toast_message);
                     env->DeleteLocalRef(activity);
@@ -2298,22 +2313,24 @@ void CheckMessages()
                 } else {
                     last_input = input_event(lc, CATA_INPUT_KEYBOARD);
 #ifdef __ANDROID__
-                    if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
-                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
-                            SDL_StopTextInput();
+                    if (!android_is_hardware_keyboard_available()) {
+                        if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
+                            if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                                SDL_StopTextInput();
 
-                        // add a quick shortcut
-                        if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
-                            qsl.remove(last_input);
-                            add_quick_shortcut(qsl, last_input, false, true);
-                            refresh_display();
-                            //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
-                            //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
+                            // add a quick shortcut
+                            if (!last_input.text.empty() || !inp_mngr.get_keyname(lc, CATA_INPUT_KEYBOARD).empty()) {
+                                qsl.remove(last_input);
+                                add_quick_shortcut(qsl, last_input, false, true);
+                                refresh_display();
+                                //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
+                                //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());                                
+                            }
                         }
-                    }
-                    else if (lc == '\n' || lc == KEY_ESCAPE) {
-                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
-                            SDL_StopTextInput();
+                        else if (lc == '\n' || lc == KEY_ESCAPE) {
+                            if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                                SDL_StopTextInput();
+                        }                        
                     }
 #endif
                 }
@@ -2351,20 +2368,22 @@ void CheckMessages()
                     last_input.text = ev.text.text;
 
 #ifdef __ANDROID__
-                    if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
-                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
-                            SDL_StopTextInput();
+                    if (!android_is_hardware_keyboard_available()) {
+                        if (!is_string_input(touch_input_context) && !touch_input_context.allow_text_entry) {
+                            if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                                SDL_StopTextInput();
 
-                        quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
-                        qsl.remove(last_input);
-                        add_quick_shortcut(qsl, last_input, false, true);
-                        refresh_display();
-                        //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
-                        //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
-                    }
-                    else if (lc == '\n' || lc == KEY_ESCAPE) {
-                        if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
-                            SDL_StopTextInput();
+                            quick_shortcuts_t& qsl = quick_shortcuts_map[get_quick_shortcut_name(touch_input_context.get_category())];
+                            qsl.remove(last_input);
+                            add_quick_shortcut(qsl, last_input, false, true);
+                            refresh_display();
+                            //for (std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it)
+                            //    LOGD("quick shortcuts for tic %s: %s", touch_input_context.get_category().c_str(), (*it).text.c_str());
+                        }
+                        else if (lc == '\n' || lc == KEY_ESCAPE) {
+                            if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
+                                SDL_StopTextInput();
+                        }
                     }
 #endif
                 }
