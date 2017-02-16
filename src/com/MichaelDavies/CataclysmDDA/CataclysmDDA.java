@@ -5,6 +5,7 @@ import android.util.Log;
 import android.content.Context;
 import android.os.Vibrator;
 import android.widget.Toast;
+import android.content.res.Configuration;
 
 public class CataclysmDDA extends SDLActivity {
     private static final String TAG = "CDDA";
@@ -28,5 +29,9 @@ public class CataclysmDDA extends SDLActivity {
         } catch(Exception e) {
             System.err.println(e.getMessage());
         }
+    }
+
+    private boolean isHardwareKeyboardAvailable() {
+        return getResources().getConfiguration().keyboard == Configuration.KEYBOARD_QWERTY;
     }
 }
