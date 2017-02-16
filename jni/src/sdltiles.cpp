@@ -717,6 +717,11 @@ void draw_virtual_joystick();
 
 static bool quick_shortcuts_enabled = true;
 
+// For previewing the terminal size with a transparent rectangle overlay when user is adjusting it in the settings
+static int preview_terminal_width = -1;
+static int preview_terminal_height = -1;
+static unsigned long preview_terminal_change_time = 0;
+
 extern "C" {
 
 static bool visible_display_frame_dirty = false;
@@ -737,26 +742,12 @@ JNIEXPORT void JNICALL Java_org_libsdl_app_SDLActivity_onNativeVisibleDisplayFra
     visible_display_frame.h = bottom - top;
 }
 
-}
-#endif
+} // "C"
 
-void refresh_display()
-{
-    needupdate = false;
-    lastupdate = SDL_GetTicks();
-
-    // Select default target (the window), copy rendered buffer
-    // there, present it, select the buffer as target again.
-    if( SDL_SetRenderTarget( renderer, NULL ) != 0 ) {
-        dbg(D_ERROR) << "SDL_SetRenderTarget failed: " << SDL_GetError();
-    }
-    SDL_RenderSetLogicalSize( renderer, WindowWidth, WindowHeight );
-#ifdef __ANDROID__
-	// If the display buffer aspect ratio is wider than the display, 
-	// draw it at the top of the screen so it doesn't get covered up
-	// by the virtual keyboard. Otherwise just center it.
-    int DisplayBufferWidth = TERMINAL_WIDTH * fontwidth;
-    int DisplayBufferHeight = TERMINAL_HEIGHT * fontheight;
+SDL_Rect get_android_render_rect(float DisplayBufferWidth, float DisplayBufferHeight) {
+    // If the display buffer aspect ratio is wider than the display, 
+    // draw it at the top of the screen so it doesn't get covered up
+    // by the virtual keyboard. Otherwise just center it.
     SDL_Rect dstrect;
     float DisplayBufferAspect = DisplayBufferWidth / (float)DisplayBufferHeight;
     float WindowHeightLessShortcuts = (float)WindowHeight;
@@ -778,7 +769,7 @@ void refresh_display()
         dstrect.h = WindowHeightLessShortcuts;
     }
 
-	// Make sure the destination rectangle fits within the visible area
+    // Make sure the destination rectangle fits within the visible area
     if (get_option<bool>("ANDROID_KEYBOARD_SCREEN_SCALE") && has_visible_display_frame) {
         int vdf_right = visible_display_frame.x + visible_display_frame.w;
         int vdf_bottom = visible_display_frame.y + visible_display_frame.h;
@@ -787,8 +778,25 @@ void refresh_display()
         if (vdf_bottom < dstrect.y + dstrect.h)
             dstrect.h = vdf_bottom - dstrect.y;
     }
+    return dstrect;
+}
 
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); 
+#endif
+
+void refresh_display()
+{
+    needupdate = false;
+    lastupdate = SDL_GetTicks();
+
+    // Select default target (the window), copy rendered buffer
+    // there, present it, select the buffer as target again.
+    if( SDL_SetRenderTarget( renderer, NULL ) != 0 ) {
+        dbg(D_ERROR) << "SDL_SetRenderTarget failed: " << SDL_GetError();
+    }
+    SDL_RenderSetLogicalSize( renderer, WindowWidth, WindowHeight );
+#ifdef __ANDROID__
+    SDL_Rect dstrect = get_android_render_rect( TERMINAL_WIDTH * fontwidth, TERMINAL_HEIGHT * fontheight );
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear( renderer );
     if( SDL_RenderCopy( renderer, display_buffer, NULL, &dstrect ) != 0 ) {
 #else
@@ -797,6 +805,23 @@ void refresh_display()
         dbg(D_ERROR) << "SDL_RenderCopy failed: " << SDL_GetError();
     }
 #ifdef __ANDROID__
+    // Draw preview of terminal size when adjusting values
+    bool preview_terminal_dirty = preview_terminal_width != get_option<int>( "TERMINAL_X" ) * fontwidth || 
+                                   preview_terminal_height != get_option<int>( "TERMINAL_Y" ) * fontheight;
+    if (preview_terminal_dirty || 
+       (preview_terminal_change_time > 0 && SDL_GetTicks() - preview_terminal_change_time < 1000))
+    {
+        if (preview_terminal_dirty) {
+            preview_terminal_width = get_option<int>( "TERMINAL_X" ) * fontwidth;
+            preview_terminal_height = get_option<int>( "TERMINAL_Y" ) * fontheight;
+            preview_terminal_change_time = SDL_GetTicks();            
+        }
+        SDL_SetRenderDrawColor( renderer, 255, 255, 255, 255 );
+        SDL_Rect previewrect = get_android_render_rect(preview_terminal_width, preview_terminal_height);
+        SDL_RenderDrawRect( renderer, &previewrect );
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    }
+
     // Draw quick shortcuts on top of the game view
     draw_quick_shortcuts();
     draw_virtual_joystick();
@@ -2933,6 +2958,13 @@ WINDOW *curses_init(void)
     overmap_font = Font::load_font( overmap_typeface, overmap_fontsize,
                                     overmap_fontwidth, overmap_fontheight );
     mainwin = newwin(get_terminal_height(), get_terminal_width(),0,0);
+
+#ifdef __ANDROID__
+	// Make sure we initialize preview_terminal_width/height to sensible values
+    preview_terminal_width = TERMINAL_WIDTH * fontwidth;
+    preview_terminal_height = TERMINAL_HEIGHT * fontheight;
+#endif
+
     return mainwin;   //create the 'stdscr' window and return its ref
 }
 
