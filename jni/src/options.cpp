@@ -1612,8 +1612,13 @@ void options_manager::init()
     mOptionsSort["android"]++;
 
     add("ANDROID_SHORTCUT_POSITION", "android", _("Shortcuts position"),
-        _("Switch between shortcuts on the left or on the right side."),
+        _("Switch between shortcuts on the left or on the right side of the screen."),
         "left,right", "left"
+        );
+
+    add("ANDROID_SHORTCUT_SCREEN_PERCENTAGE", "android", _("Shortcuts screen percentage"),
+        _("How much of the screen can shortcuts occupy, as a percentage of total screen width."),
+        10, 100, 100
         );
 
     add("ANDROID_SHORTCUT_OVERLAP", "android", _("Shortcuts overlap screen"),
