@@ -1653,7 +1653,7 @@ void options_manager::init()
 
     add("ANDROID_SHORTCUT_WIDTH_MIN", "android", _("Shortcut width (min)"),
         _("The minimum width of each on-screen keyboard shortcut in pixels. Only relevant when lots of shortcuts are visible at once."),
-        50, 1000, 50
+        20, 1000, 50
         );
 
     add("ANDROID_SHORTCUT_WIDTH_MAX", "android", _("Shortcut width (max)"),
