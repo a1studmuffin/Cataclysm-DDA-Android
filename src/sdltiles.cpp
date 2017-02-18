@@ -1870,6 +1870,11 @@ bool is_string_input(input_context& ctx) {
         || category == "WORLDGEN_CONFIRM_DIALOG";
 }
 
+long get_key_event_from_string(const std::string& str) {
+    if (str.length())
+        return (long)str[0];
+    return -1;
+}
 // This function is triggered on finger up events, OR by a repeating timer for touch hold events.
 void handle_finger_input(unsigned long ticks) {
 
@@ -1877,7 +1882,7 @@ void handle_finger_input(unsigned long ticks) {
     float delta_y = finger_curr_y - finger_down_y;
     float dist = (float)sqrtf(delta_x*delta_x + delta_y*delta_y); // in pixel space
     bool handle_diagonals = touch_input_context.is_action_registered("LEFTUP");
-
+    bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
     if (dist > (get_option<float>("ANDROID_DEADZONE_RANGE")*std::max(WindowWidth, WindowHeight))) {
         if (!handle_diagonals) {
             if (delta_x >= 0 && delta_y >= 0)
@@ -1949,13 +1954,13 @@ void handle_finger_input(unsigned long ticks) {
         if (ticks - finger_down_time >= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
             // Single tap (repeat) - held, so always treat this as a tap
             // We only allow repeats for waiting, not confirming in menus as that's a bit silly
-            if (touch_input_context.get_category() == "DEFAULTMODE")
-                last_input = input_event(choose_best_key_for_action("pause", touch_input_context.get_category()), CATA_INPUT_KEYBOARD);
+            if (is_default_mode)
+                last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_TAP_KEY")), CATA_INPUT_KEYBOARD);
         }
         else {
             if (last_tap_time > 0 && ticks - last_tap_time < (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {
                 // Double tap
-                last_input = input_event(KEY_ESCAPE, CATA_INPUT_KEYBOARD);
+                last_input = input_event(is_default_mode ? KEY_ESCAPE : KEY_ESCAPE, CATA_INPUT_KEYBOARD);
                 last_tap_time = 0;
             }
             else {
@@ -2036,6 +2041,27 @@ void CheckMessages()
     }
 
     unsigned long ticks = SDL_GetTicks();
+
+#if 0
+    // Dump out touch input values
+    LOGD("---");
+    LOGD("    ticks: %lums", ticks);
+    LOGD("    finger_down_time: %lu (%lu ago)", finger_down_time, ticks - finger_down_time);
+    LOGD("    finger_repeat_time: %lu (%lu ago)", finger_repeat_time, ticks - finger_repeat_time);
+    LOGD("    last_tap_time: %lu (%lu ago)", last_tap_time, ticks - last_tap_time);
+    LOGD("    ac_back_down_time: %lu (%lu ago)", ac_back_down_time, ticks - ac_back_down_time);
+    LOGD("    finger_down_x: %f", finger_down_x);
+    LOGD("    finger_down_y: %f", finger_down_y);
+    LOGD("    finger_curr_x: %f", finger_curr_x);
+    LOGD("    finger_curr_y: %f", finger_curr_y);
+    LOGD("    second_finger_down_x: %f", second_finger_down_x);
+    LOGD("    second_finger_down_y: %f", second_finger_down_y);
+    LOGD("    second_finger_curr_x: %f", second_finger_curr_x);
+    LOGD("    second_finger_curr_y: %f", second_finger_curr_y);
+    LOGD("    is_two_finger_touch: %d", is_two_finger_touch);
+    LOGD("    is_quick_shortcut_touch: %d", is_quick_shortcut_touch);
+    LOGD("    quick_shortcuts_toggle_handled: %d", quick_shortcuts_toggle_handled);
+#endif
 
     // Force text input mode if hardware keyboard is available.
     if (android_is_hardware_keyboard_available() && !SDL_IsTextInputActive())
@@ -2283,7 +2309,7 @@ void CheckMessages()
             // Single tap
             //LOGD("single tap, is_default_mode: %d category: %s", is_default_mode, touch_input_context.get_category().c_str());
             last_tap_time = ticks;
-            last_input = input_event(is_default_mode ? choose_best_key_for_action("pause", touch_input_context.get_category()) : '\n', CATA_INPUT_KEYBOARD);
+            last_input = input_event(is_default_mode ? get_key_event_from_string(get_option<std::string>("ANDROID_TAP_KEY")) : '\n', CATA_INPUT_KEYBOARD);
             last_tap_time = 0;
             return;
         }
@@ -2486,7 +2512,7 @@ void CheckMessages()
                         finger_curr_x = ev.tfinger.x * WindowWidth;
                         finger_curr_y = ev.tfinger.y * WindowHeight;
 
-                        if (get_option<bool>("ANDROID_VIRTUAL_JOYSTICK_FOLLOW")) {
+                        if (get_option<bool>("ANDROID_VIRTUAL_JOYSTICK_FOLLOW") && !is_two_finger_touch) {
                             // If we've moved too far from joystick center, offset joystick center automatically
                             float delta_x = finger_curr_x - finger_down_x;
                             float delta_y = finger_curr_y - finger_down_y;
@@ -2558,20 +2584,54 @@ void CheckMessages()
                         if (is_two_finger_touch) {
                             // handle zoom in/out
                             if (is_default_mode) {
-                                float down_x = finger_down_x - second_finger_down_x;
-                                float down_y = finger_down_y - second_finger_down_y;
-                                float down_dist = (float)sqrtf(down_x*down_x + down_y*down_y);
-                                float curr_x = finger_curr_x - second_finger_curr_x;
-                                float curr_y = finger_curr_y - second_finger_curr_y;
-                                float curr_dist = (float)sqrtf(curr_x*curr_x + curr_y*curr_y);
-                                const float zoom_ratio = 0.9f;
-                                if (curr_dist < down_dist * zoom_ratio) {
-                                    // zoom out
-                                    last_input = input_event('z', CATA_INPUT_KEYBOARD);
-                                } else if (curr_dist > down_dist / zoom_ratio) {
-                                    // zoom in
-                                    last_input = input_event('Z', CATA_INPUT_KEYBOARD);
-                                }                                 
+                                float x1 = (finger_curr_x - finger_down_x);
+                                float y1 = (finger_curr_y - finger_down_y);
+                                float d1 = (float)(sqrtf(x1*x1+y1*y1));
+
+                                float x2 = (second_finger_curr_x - second_finger_down_x);
+                                float y2 = (second_finger_curr_y - second_finger_down_y);
+                                float d2 = (float)(sqrtf(x2*x2+y2*y2));
+
+                                float longest_window_edge = std::max(WindowWidth, WindowHeight);
+
+                                if (std::max(d1, d2) < get_option<float>("ANDROID_DEADZONE_RANGE") * longest_window_edge) {
+                                    last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_2_TAP_KEY")), CATA_INPUT_KEYBOARD);
+                                } else {
+                                    float dot = (x1*x2+y1*y2)/(d1*d2); // dot product of two finger vectors, -1 to +1
+                                    if (dot > 0.0f) { // both fingers mostly heading in same direction, check for double-finger swipe gesture
+                                        float dratio = d1/d2;
+                                        const float dist_ratio = 0.3f;
+                                        if (dratio > dist_ratio && dratio < (1.0f/dist_ratio)) { // both fingers moved roughly the same distance, so it's a double-finger swipe!
+                                            float xavg = 0.5f*(x1+x2);
+                                            float yavg = 0.5f*(y1+y2);
+                                            if (xavg > 0 && xavg > std::abs(yavg)) {
+                                                last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_2_SWIPE_LEFT_KEY")), CATA_INPUT_KEYBOARD);
+                                            } else if (xavg < 0 && -xavg > std::abs(yavg)) {
+                                                last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_2_SWIPE_RIGHT_KEY")), CATA_INPUT_KEYBOARD);
+                                            } else if (yavg > 0 && yavg > std::abs(xavg)) {
+                                                last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_2_SWIPE_DOWN_KEY")), CATA_INPUT_KEYBOARD);
+                                            } else {
+                                                last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_2_SWIPE_UP_KEY")), CATA_INPUT_KEYBOARD);
+                                            } 
+                                        }
+                                    } else {
+                                        // both fingers heading in opposite direction, check for zoom gesture
+                                        float down_x = finger_down_x - second_finger_down_x;
+                                        float down_y = finger_down_y - second_finger_down_y;
+                                        float down_dist = (float)sqrtf(down_x*down_x + down_y*down_y);
+
+                                        float curr_x = finger_curr_x - second_finger_curr_x;
+                                        float curr_y = finger_curr_y - second_finger_curr_y;
+                                        float curr_dist = (float)sqrtf(curr_x*curr_x + curr_y*curr_y);
+
+                                        const float zoom_ratio = 0.9f;
+                                        if (curr_dist < down_dist * zoom_ratio) {
+                                            last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_PINCH_IN_KEY")), CATA_INPUT_KEYBOARD);
+                                        } else if (curr_dist > down_dist / zoom_ratio) {
+                                            last_input = input_event(get_key_event_from_string(get_option<std::string>("ANDROID_PINCH_OUT_KEY")), CATA_INPUT_KEYBOARD);
+                                        }
+                                    }                                    
+                                }
                             }
                         }
                         else if (ticks - finger_down_time <= (unsigned long)get_option<int>("ANDROID_INITIAL_DELAY")) {

@@ -1579,6 +1579,50 @@ void options_manager::init()
         true
         );
 
+    mOptionsSort["android"]++;
+
+    add("ANDROID_TAP_KEY", "android", _("Tap key (in-game)"),
+        _("The key to press when tapping during gameplay."),
+        ".", 1
+        );
+
+    add("ANDROID_2_TAP_KEY", "android", _("Two-finger tap key (in-game)"),
+        _("The key to press when tapping with two fingers during gameplay."),
+        "i", 1
+        );
+
+    add("ANDROID_2_SWIPE_UP_KEY", "android", _("Two-finger swipe up key (in-game)"),
+        _("The key to press when swiping up with two fingers during gameplay."),
+        "K", 1
+        );
+
+    add("ANDROID_2_SWIPE_DOWN_KEY", "android", _("Two-finger swipe down key (in-game)"),
+        _("The key to press when swiping down with two fingers during gameplay."),
+        "J", 1
+        );
+
+    add("ANDROID_2_SWIPE_LEFT_KEY", "android", _("Two-finger swipe left key (in-game)"),
+        _("The key to press when swiping left with two fingers during gameplay."),
+        "L", 1
+        );
+
+    add("ANDROID_2_SWIPE_RIGHT_KEY", "android", _("Two-finger swipe right key (in-game)"),
+        _("The key to press when swiping right with two fingers during gameplay."),
+        "H", 1
+        );
+
+    add("ANDROID_PINCH_IN_KEY", "android", _("Pinch in key (in-game)"),
+        _("The key to press when pinching in during gameplay."),
+        "z", 1
+        );
+
+    add("ANDROID_PINCH_OUT_KEY", "android", _("Pinch out key (in-game)"),
+        _("The key to press when pinching out during gameplay."),
+        "Z", 1
+        );
+
+    mOptionsSort["android"]++;
+
     add("ANDROID_SHORTCUT_AUTOADD", "android", _("Auto-manage contextual gameplay shortcuts"),
         _("If true, contextual in-game shortcuts are added and removed automatically as needed: examine, close, butcher, move up/down, control vehicle, pickup, toggle enemy + safe mode, sleep."),
         true
