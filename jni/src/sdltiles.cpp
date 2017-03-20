@@ -2333,7 +2333,11 @@ void CheckMessages()
                 // but it seems to work so far, and the alternative is the player losing their progress as the app is likely
                 // to be destroyed pretty quickly when it goes out of focus due to memory usage.
                 case SDL_WINDOWEVENT_FOCUS_LOST:
-                    if (world_generator && world_generator->active_world && g && g->uquit == QUIT_NO && get_option<bool>("ANDROID_QUICKSAVE")) 
+                    if (world_generator &&
+                        world_generator->active_world && 
+                        g && g->uquit == QUIT_NO && 
+                        get_option<bool>("ANDROID_QUICKSAVE") &&
+                        !std::uncaught_exception()) 
                         g->quicksave();
                     break;
                 // SDL sends a window size changed event whenever the screen rotates orientation
