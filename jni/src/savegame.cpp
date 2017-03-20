@@ -332,7 +332,6 @@ void game::load_shortcuts(std::istream & fin) {
     std::string linebuf;
     std::stringstream linein;
 
-    int tmpturn, tmpcalstart = 0, tmpspawn, tmprun, tmptar, levx, levy, levz, comx, comy;
     JsonIn jsin(fin);
     try {
         JsonObject data = jsin.get_object();
