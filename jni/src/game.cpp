@@ -13949,7 +13949,7 @@ void intro()
               "- Remove a shortcut by flicking up on it. Hold it down to see help text.\n"
               "- Reset shortcuts for a screen by flicking up to remove all shortcuts.\n"
               "- Android-specific options live under Settings > Options > Android.\n"
-              "- Adjust terminal size under Settings > Options > Graphics (req's restart).\n"
+              "- Enable tiles & change terminal size under Settings > Options > Graphics.\n"
               "- For the best keyboard experience, use an SSH-friendly virtual keyboard\n"
               "  such as \"Hacker's Keyboard\" on the Google Play store.\n"
               "- Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"

@@ -1169,7 +1169,14 @@ void options_manager::init()
 
     add("USE_TILES", "graphics", _("Use tiles"),
         _("If true, replaces some TTF rendered text with tiles."),
+#ifdef __ANDROID__
+        // On Android, we default to not using tiles, so the game will run on more lower spec devices by default.
+        // Users can try turning tiles on, but if that doesn't work, they can just delete game data and reload.
+        // Seems like a more user-friendly option than asking them to delete/mess around with the installed 'gfx' folder.
+        false, COPT_CURSES_HIDE
+#else
         true, COPT_CURSES_HIDE
+#endif
         );
 
     add("TILES", "graphics", _("Choose tileset"),
