@@ -719,6 +719,9 @@ class game
         void load( std::string worldname, std::string name ); // Load a player-specific save file
         bool load_master(std::string worldname); // Load the master data file, with factions &c
         void load_weather(std::istream &fin);
+#ifdef __ANDROID__
+        void load_shortcuts(std::istream &fin);
+#endif
         bool start_game(std::string worldname); // Starts a new game in a world
         void start_special_game(special_game_id gametype); // See gamemode.cpp
 
@@ -731,6 +734,9 @@ class game
         // returns false if saving failed for whatever reason
         bool save_maps();
         void save_weather(std::ostream &fout);
+#ifdef __ANDROID__
+        void save_shortcuts(std::ostream &fout);
+#endif
         // returns false if saving failed for whatever reason
         bool save_uistate();
         void load_uistate(std::string worldname);

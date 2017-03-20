@@ -3693,6 +3693,10 @@ void game::load(std::string worldname, std::string name)
 
     read_from_file_optional( worldpath + name + ".log", std::bind( &player::load_memorial_file, &u, _1 ) );
 
+#ifdef __ANDROID__
+    read_from_file_optional( worldpath + name + ".shortcuts", std::bind( &game::load_shortcuts, this, _1 ) );
+#endif
+
     // Now that the player's worn items are updated, their sight limits need to be
     // recalculated. (This would be cleaner if u.worn were private.)
     u.recalc_sight_limits();
@@ -3868,8 +3872,17 @@ bool game::save_player_data()
     const bool saved_log = write_to_file( playerfile + ".log", [&]( std::ostream &fout ) {
         fout << u.dump_memorial();
     }, _( "player memorial" ) );
+#ifdef __ANDROID__
+    const bool saved_shortcuts = write_to_file( playerfile + ".shortcuts", [&]( std::ostream &fout ) {
+        save_shortcuts(fout);
+    }, _( "quick shortcuts" ) );
+#endif
 
-    return saved_data && saved_weather && saved_log;
+    return saved_data && saved_weather && saved_log
+#ifdef __ANDROID__
+    && saved_shortcuts
+#endif
+    ;
 }
 
 bool game::save()
