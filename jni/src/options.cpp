@@ -1485,7 +1485,7 @@ void options_manager::init()
         );
 
     add("ANDROID_QUICKSAVE", "android", _("Quicksave on app lose focus"),
-        _("If true, quicksave whenever the app loses focus (screen locked, app moved into background etc.)"),
+        _("If true, quicksave whenever the app loses focus (screen locked, app moved into background etc.) WARNING: Experimental. This may result in corrupt save games."),
         false
         );
 
