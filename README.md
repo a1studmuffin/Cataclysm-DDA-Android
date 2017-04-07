@@ -33,7 +33,7 @@ Here's a rundown of what's in each folder:
 `assets/lua` - An exact copy of Cataclysm-DDA's [lua](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/lua) folder.  
 `jni/` - C/C++ source code for all native libraries. Includes modified versions of external libraries `SDL2-2.0.5`, `SDL2_image-2.0.1`, `SDL2_mixer-2.0.1`, `SDL2_ttf-2.0.14`, `lua5.1.5`, and `libintl-lite-0.5` (a lightweight `gettext` replacement). Also includes `src` which is a modified version of Cataclysm-DDA's [src](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/src) folder. All changes are guarded with `__ANDROID__` preprocessor defines.  
 `res/` - Android app resources (icons etc.)  
-`src/` - Java app source code. Note that some changes have been made to [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/src/org/libsdl/app/SDLActivity.java) from the original SDL Android project template's [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/src/org/libsdl/app/SDLActivity.java).
+`src/` - Java app source code. Note that some changes have been made to [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/src/org/libsdl/app/SDLActivity.java) from the original SDL Android project template's [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/SDL2/android-project/src/org/libsdl/app/SDLActivity.java).
 
 ## Compiling
 
