@@ -10,6 +10,5 @@ proguard_project.txt
 # Ignore keystore (used for signing release APK for Google Play)
 cddaandroid.keystore
 
-# Ignore local debugging and deploy helper scripts
+# Ignore local debugging scripts
 crash_stack.cmd
-deploy.py
