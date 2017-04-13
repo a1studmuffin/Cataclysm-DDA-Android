@@ -5,7 +5,7 @@ libs/
 obj/
 ant.properties
 local.properties
-proguard_project.txt
+proguard-project.txt
 
 # Ignore keystore (used for signing release APK for Google Play)
 cddaandroid.keystore
