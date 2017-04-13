@@ -15,5 +15,5 @@ APP_ABI := armeabi-v7a
 #APP_OPTIM := release
 
 # Min SDK level
-APP_PLATFORM=android-16
+APP_PLATFORM=android-15
 
