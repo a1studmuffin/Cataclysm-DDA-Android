@@ -215,6 +215,7 @@ public class SDLActivity extends Activity {
         }
 
         SDLActivity.handlePause();
+        mSurface.setVisibility(View.GONE);
     }
 
     @Override
@@ -227,6 +228,7 @@ public class SDLActivity extends Activity {
         }
 
         SDLActivity.handleResume();
+        mSurface.setVisibility(View.VISIBLE);
     }
 
 
