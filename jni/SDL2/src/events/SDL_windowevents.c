@@ -130,9 +130,11 @@ SDL_SendWindowEvent(SDL_Window * window, Uint8 windowevent, int data1,
             window->windowed.w = data1;
             window->windowed.h = data2;
         }
+#ifndef __ANDROID__
         if (data1 == window->w && data2 == window->h) {
             return 0;
         }
+#endif
         window->w = data1;
         window->h = data2;
         SDL_OnWindowResized(window);
