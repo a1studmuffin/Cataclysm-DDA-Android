@@ -1,60 +1,104 @@
-# Cataclysm: Dark Days Ahead
+# Cataclysm: Dark Days Ahead (Android Port)
 
-Cataclysm: Dark Days Ahead is a roguelike set in a post-apocalyptic world. While some have described it as a "zombie game", there is far more to Cataclysm than that. Struggle to survive in a harsh, persistent, procedurally generated world. Scavenge the remnants of a dead civilization for food, equipment, or, if you are lucky, a vehicle with a full tank of gas to get you the hell out of Dodge. Fight to defeat or escape from a wide variety of powerful monstrosities, from zombies to giant insects to killer robots and things far stranger and deadlier, and against the others like yourself, that want what you have...
+This is an unofficial port of [Cataclysm: Dark Days Ahead](https://github.com/CleverRaven/Cataclysm-DDA/) (0.C Experimental) for Android.
 
+Features:
+- Tilesets, sound, localization, lua mod support
+- Backwards compatible with desktop 0.C save games
+- Stores game data in a publicly writeable location:  
+`/sdcard/Android/data/com.MichaelDavies.CataclysmDDA/files/`
+- Supports installation of custom tilesets, mods, soundpacks, and save games
+- Works with a physical keyboard or virtual keyboard & touchscreen
+- Auto-saves when the app loses focus (screen locked, switched apps etc.)
+- Highly customizable touch controls and  automatic in-game contextual shortcuts
+
+It uses the [Android NDK](https://developer.android.com/ndk/index.html) to compile the game's C++ source code as a native library, with some Java glue to hold everything together.
+
+The Cataclysm-DDA version number used by this port can be found here: [version.h](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/src/version.h).
 
 ## Download
 
-Visit [our website](http://en.cataclysmdda.com/) for download links to all stable and experimental releases.
+Get it on [Google Play](https://play.google.com/store/apps/details?id=com.MichaelDavies.CataclysmDDA), or download an APK from the [releases](https://github.com/a1studmuffin/Cataclysm-DDA-Android/releases) section.
 
-The source can either be downloaded as [an archive](https://github.com/CleverRaven/Cataclysm-DDA/archive/master.zip), or you can clone it from [our GitHub repository](https://github.com/CleverRaven/Cataclysm-DDA/).
+## Overview
 
+Since Cataclysm-DDA supports a graphical tiles build using the [SDL](https://www.libsdl.org/) graphics library, this project is unsurprisingly based on SDL's [Android project template](https://github.com/a1studmuffin/Cataclysm-DDA-Android/tree/master/jni/SDL2/android-project). For more information see the SDL docs [README-android.md](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/SDL2/docs/README-android.md).
 
-## Compile
+Here's a rundown of what's in each folder:
 
-Please read [COMPILING.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/COMPILING.md) - it covers general information and more specific recipes for Linux, OS X, Windows and BSD. We also have an "unofficial" guide on building with `cmake` at [COMPILING-CMAKE.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/COMPILING-CMAKE.md). See [doc/COMPILER_SUPPORT.md] (https://github.com/CleverRaven/Cataclysm-DDA/blob/master/doc/COMPILER_SUPPORT.md) for details on which compilers we support. And you can always dig for more information in `doc/`.
+`assets/android` - Android-specific game assets.  
+`assets/data` - An exact copy of Cataclysm-DDA's [data](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/data) folder.  
+`assets/gfx` - An exact copy of Cataclysm-DDA's [gfx](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/gfx) folder.  
+`assets/lang` - An exact copy of Cataclysm-DDA's [lang](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/lang) folder.  
+`assets/lua` - An exact copy of Cataclysm-DDA's [lua](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/lua) folder.  
+`jni/` - C/C++ source code for all native libraries. Includes modified versions of external libraries `SDL2-2.0.5`, `SDL2_image-2.0.1`, `SDL2_mixer-2.0.1`, `SDL2_ttf-2.0.14`, `lua5.1.5`, and `libintl-lite-0.5` (a lightweight `gettext` replacement). Also includes `src` which is a modified version of Cataclysm-DDA's [src](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/src) folder. All changes are guarded with `__ANDROID__` preprocessor defines.  
+`res/` - Android app resources (icons etc.)  
+`src/` - Java app source code. Note that some changes have been made to [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/src/org/libsdl/app/SDLActivity.java) from the original SDL Android project template's [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/SDL2/android-project/src/org/libsdl/app/SDLActivity.java).
 
-## Contribute
+## Compiling
 
-Cataclysm:Dark Days Ahead is the result of contributions from over 500 volunteers under the Creative Commons Attribution ShareAlike 3.0 license. The code and content of the game is free to use, modify, and redistribute for any purpose whatsoever. See http://creativecommons.org/licenses/by-sa/3.0/ for details.
-Some code distributed with the project is not part of the project and is released under different software licenses, the files covered by different software licenses have their own license notices.
+### Dependencies
 
-[![Bountysource](https://www.bountysource.com/badge/tracker?tracker_id=146201)](https://www.bountysource.com/trackers/146201-clever-raven-cataclysm-dda?utm_source=146201&utm_medium=shield&utm_campaign=TRACKER_BADGE)
+This port was developed under Windows using:
 
-Please see [CONTRIBUTING.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/CONTRIBUTING.md) for details.
+- Java JDK 1.8.0
+- Apache Ant 1.10.0
+- Android SDK 24
+- Android NDK r10e
 
-## Community
+It compiles via the Android command line tools (as opposed to Android Studio).
 
-Cataclysm: Dark Days Ahead main site, includes links to forum, wiki, and GitHub repo:
-http://en.cataclysmdda.com/
+It should also compile under Linux or Mac OS if your environment is set up correctly, though this is untested.
 
-Forums:
-http://smf.cataclysmdda.com
+You'll need commands `ndk-build` and `ant` to build the APK, as well as `adb` to deploy the APK to a device. 
 
-Wiki:
-http://wiki.cataclysmdda.com/
+For more information see the relevant platform installation guide for each dependency above.
 
-GitHub repo:
-https://github.com/CleverRaven/Cataclysm-DDA
+### Steps
 
-IRC:
-irc.freenode.net ; #CataclysmDDA
-http://webchat.freenode.net/?channels=#CataclysmDDA
+This modified Cataclysm source code comes with [version.h](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/src/version.h) and Lua [catabindings.cpp](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/src/lua/catabindings.cpp) pre-generated, so there's no need to run those steps before compiling.
+
+First, use Android Tools to update the project. From the command line in the project folder, run:
+
+    $ android update project -p .
+
+Then compile the C/C++ source code into debuggable native shared libraries:
+
+    $ ndk-build
+    
+or to build release libraries, run:
+
+    $ ndk-build NDK_DEBUG=0 APP_CFLAGS+=-DRELEASE=1
+
+Finally, build the APK with:
+
+    $ ant debug
+or
+
+    $ ant release
+    
+Note: The release APK will be unsigned. To sign it, you need to generate a keystore and point to it within `ant.properties`. More info on that [here](http://shallowsky.com/blog/programming/android-ant-build.html).
+
+## Maintenance
+
+To keep maintenance simple, there are a few policies I'm adhering to:
+
+1) No changes should ever be made to Cataclysm-DDA's original data files under `assets`, except when updating the full app (code and data) to a newer Cataclysm-DDA version.
+
+2) All modifications to Cataclysm's C/C++ source code under `jni/src` must be guarded with `__ANDROID__` preprocessor defines, and must only address Android-specific issues. This simplifies the process of updating the app to newer Cataclysm-DDA versions.
+
+3) Updating the build to a newer Cataclysm-DDA version must always be done as an atomic operation. Specifically this means I won't be accepting pull requests for spot fixes to code or data from newer versions of the game. Instead everything must come at once, including merging/updating all game code (`jni/src`) and assets (`data`, `gfx`, `lang`, `lua`), regenerating `version.h` and lua bindings (`catabindings.cpp`), updating the assets file count in `SplashScreen.java`, and ticking `AndroidManifest.xml` with a new version code + name. This ensures the Android build is always at parity with the desktop build for the same version as shown in the main menu.
+
+## Contributing
+
+You're welcome to report an issue or submit a pull request with Android-specific bugfixes and features, as long as it falls within the policies above. If it's a large change you might want to ping me first.
+
+If you'd like to contribute to the actual game itself (not the Android port), please do this upstream at the [Cataclysm-DDA](https://github.com/CleverRaven/Cataclysm-DDA/) GitHub page and I'll (eventually) pull their fixes downstream when I update versions periodically.
+
+If I get lazy and stop updating, I'm totally cool with someone else forking the project and continuing to work on it. Again, it's probably best to ping me in this situation due to the Google Play app store listing, but I'm happy to do whatever is best for the game and the community.
+
+You can reach me at m@michaeldavies.com.au.
 
 ## Frequently Asked Questions
 
-#### Is there a tutorial?
-
-Yes, you can find the tutorial in the **Special** menu at the main menu. You can also access documentation in-game via the `?` key.
-
-#### How can I change the key bindings?
-
-Press the `?` key, followed by the `1` key to see the full list of key commands. Press the `+` key to add a key binding, select which action with the corresponding letter key `a-w`, and then the key you wish to assign to that action.
-
-#### How can I start a new world?
-
-**World** on the main menu will generate a fresh world for you. Select **Create World**.
-
-#### I've found a bug / I would like to make a suggestion. What should I do?
-
-Please submit an issue on [our GitHub page](https://github.com/CleverRaven/Cataclysm-DDA/issues/). If you're not able to, send an email to `kevin.granade@gmail.com`.
+Please see the [Google Play app description](https://play.google.com/store/apps/details?id=com.MichaelDavies.CataclysmDDA) for common questions and answers.
