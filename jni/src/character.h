@@ -1,3 +1,4 @@
+#pragma once
 #ifndef CHARACTER_H
 #define CHARACTER_H
 
@@ -10,6 +11,7 @@
 #include "pathfinding.h"
 
 #include <map>
+#include <vector>
 
 using skill_id = string_id<Skill>;
 enum field_id : int;
@@ -17,6 +19,7 @@ class field;
 class field_entry;
 class vehicle;
 struct resistances;
+struct mutation_branch;
 
 enum vision_modes {
     DEBUG_NIGHTVISION,
@@ -165,6 +168,11 @@ class Character : public Creature, public visitable<Character>
         /** Handles stat and bonus reset. */
         void reset() override;
 
+        /** Picks a random body part, adjusting for mutations, broken body parts etc. */
+        body_part get_random_body_part( bool main ) const override;
+        /** Returns all body parts this character has, in order they should be displayed. */
+        std::vector<body_part> get_all_body_parts( bool main = false ) const override;
+
         /** Recalculates encumbrance cache. */
         void reset_encumbrance();
         /** Returns ENC provided by armor, etc. */
@@ -235,8 +243,13 @@ class Character : public Creature, public visitable<Character>
         /** Toggles a trait on the player and in their mutation list */
         void toggle_trait(const std::string &flag);
         /** Add or removes a mutation on the player, but does not trigger mutation loss/gain effects. */
-        void set_mutation(const std::string &flag);
-        void unset_mutation(const std::string &flag);
+        void set_mutation( const std::string &flag );
+        void unset_mutation( const std::string &flag );
+
+        /** Converts a body_part to an hp_part */
+        static hp_part bp_to_hp(body_part bp);
+        /** Converts an hp_part to a body_part */
+        static body_part hp_to_bp(hp_part hpart);
 
         /**
          * Displays menu with body part hp, optionally with hp estimation after healing.
@@ -405,6 +418,10 @@ class Character : public Creature, public visitable<Character>
 
         /** Maximum thrown range with a given item, taking all active effects into account. */
         int throw_range( const item & ) const;
+        /** Dispersion of a thrown item, against a given target. */
+        int throwing_dispersion( const item &to_throw, Creature *critter = nullptr ) const;
+        /** How much dispersion does one point of target's dodge add when throwing at said target? */
+        int throw_dispersion_per_dodge( bool add_encumbrance = true ) const;
 
         int weight_carried() const;
         units::volume volume_carried() const;
@@ -417,6 +434,7 @@ class Character : public Creature, public visitable<Character>
         /**
          * Checks if character stats and skills meet minimum requirements for the item.
          * Prints an appropriate message if requirements not met.
+         * @param it Item we are checking
          * @param context optionally override effective item when checking contextual skills
          */
         bool can_use( const item& it, const item &context = item() ) const;
@@ -431,7 +449,7 @@ class Character : public Creature, public visitable<Character>
         /** Returns true if the player is wearing the item on the given body_part. */
         bool is_wearing_on_bp(const itype_id &it, body_part bp) const;
         /** Returns true if the player is wearing an item with the given flag. */
-        bool worn_with_flag( const std::string &flag ) const;
+        bool worn_with_flag( const std::string &flag, body_part bp = num_bp ) const;
 
         // --------------- Skill Stuff ---------------
         SkillLevel &get_skill_level( const skill_id &ident );
@@ -490,8 +508,26 @@ class Character : public Creature, public visitable<Character>
         /** Returns true if the player has some form of night vision */
         bool has_nv();
 
+        /**
+         * Returns >0 if character is sitting/lying and relatively inactive.
+         * 1 represents sleep on comfortable bed, so anything above that should be rare.
+         */
+        float rest_quality() const;
+        /**
+         * Average hit points healed per turn.
+         */
+        float healing_rate( float at_rest_quality ) const;
+
+        /**
+         * Goes over all mutations, gets min and max of a value with given name
+         * @return min( 0, lowest ) + max( 0, highest )
+         */
+        float mutation_value( const std::string &val ) const;
+
         /** Color's character's tile's background */
         nc_color symbol_color() const override;
+
+        virtual std::string extended_description() const override;
 
         // In newcharacter.cpp
         void empty_skills();
@@ -546,8 +582,8 @@ class Character : public Creature, public visitable<Character>
             char key = ' ';
             /**
              * Time (in turns) until the mutation increase hunger/thirst/fatigue according
-             * to its cost (@ref mutation_data::cost). When those costs have been paid, this
-             * is reset to @ref mutation_data::cooldown.
+             * to its cost (@ref mutation_branch::cost). When those costs have been paid, this
+             * is reset to @ref mutation_branch::cooldown.
              */
             int charge = 0;
             /** Whether the mutation is activated. */
@@ -582,6 +618,10 @@ class Character : public Creature, public visitable<Character>
          * Contains mutation ids of the base traits.
          */
         std::unordered_set<std::string> my_traits;
+        /**
+         * Pointers to mutation branches in @ref my_mutations.
+         */
+        std::vector<const mutation_branch *> cached_mutations;
 
         void store(JsonOut &jsout) const;
         void load(JsonObject &jsin);

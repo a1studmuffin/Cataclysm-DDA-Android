@@ -1,3 +1,4 @@
+#pragma once
 #ifndef VEH_TYPE_H
 #define VEH_TYPE_H
 
@@ -63,9 +64,9 @@ enum vpart_bitflags : int {
     VPFLAG_CARGO,
     VPFLAG_INTERNAL,
     VPFLAG_SOLAR_PANEL,
-    VPFLAG_TRACK,
     VPFLAG_RECHARGE,
     VPFLAG_EXTENDS_VISION,
+    VPFLAG_ENABLED_DRAINS_EPOWER,
 
     NUM_VPFLAGS
 };

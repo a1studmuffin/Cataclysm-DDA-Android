@@ -19,6 +19,7 @@
 #include "input.h"
 #include "overmap.h"
 #include "player.h"
+#include "string_input_popup.h"
 
 #include <string>
 #include <vector>
@@ -498,9 +499,13 @@ void defense_game::setup()
                 selection--;
             }
             refresh_setup(w, selection);
-        } else if (action == "SAVE_TEMPLATE") {
-            std::string name = string_input_popup(_("Template Name:"), 20); //TODO: this is NON FUNCTIONAL!!!
-            refresh_setup(w, selection);
+        } else if( action == "SAVE_TEMPLATE" ) {
+            std::string name = string_input_popup()
+                               .title( _( "Template Name:" ) )
+                               .width( 20 )
+                               .query_string();
+            //TODO: this is NON FUNCTIONAL!!!
+            refresh_setup( w, selection );
         } else {
             switch (selection) {
             case 1: // Scenario selection

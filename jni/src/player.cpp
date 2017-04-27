@@ -7,6 +7,8 @@
 #include "mission.h"
 #include "game.h"
 #include "map.h"
+#include "filesystem.h"
+#include "fungal_effects.h"
 #include "debug.h"
 #include "addiction.h"
 #include "inventory.h"
@@ -56,6 +58,7 @@
 #include "vitamin.h"
 #include "fault.h"
 #include "recipe_dictionary.h"
+#include "ranged.h"
 
 #include <map>
 #include <iterator>
@@ -78,7 +81,6 @@
 
 const double MIN_RECOIL = 600;
 
-const mtype_id mon_dermatik_larva( "mon_dermatik_larva" );
 const mtype_id mon_player_blob( "mon_player_blob" );
 const mtype_id mon_shadow_snake( "mon_shadow_snake" );
 
@@ -93,9 +95,7 @@ const efftype_id effect_adrenaline( "adrenaline" );
 const efftype_id effect_alarm_clock( "alarm_clock" );
 const efftype_id effect_asthma( "asthma" );
 const efftype_id effect_attention( "attention" );
-const efftype_id effect_badpoison( "badpoison" );
 const efftype_id effect_bite( "bite" );
-const efftype_id effect_bleed( "bleed" );
 const efftype_id effect_blind( "blind" );
 const efftype_id effect_blisters( "blisters" );
 const efftype_id effect_bloodworms( "bloodworms" );
@@ -110,6 +110,7 @@ const efftype_id effect_darkness( "darkness" );
 const efftype_id effect_datura( "datura" );
 const efftype_id effect_deaf( "deaf" );
 const efftype_id effect_dermatik( "dermatik" );
+const efftype_id effect_disabled( "disabled" );
 const efftype_id effect_downed( "downed" );
 const efftype_id effect_drunk( "drunk" );
 const efftype_id effect_earphones( "earphones" );
@@ -129,27 +130,21 @@ const efftype_id effect_iodine( "iodine" );
 const efftype_id effect_jetinjector( "jetinjector" );
 const efftype_id effect_lack_sleep( "lack_sleep" );
 const efftype_id effect_lying_down( "lying_down" );
+const efftype_id effect_mending( "mending" );
 const efftype_id effect_meth( "meth" );
 const efftype_id effect_onfire( "onfire" );
 const efftype_id effect_paincysts( "paincysts" );
-const efftype_id effect_paralyzepoison( "paralyzepoison" );
 const efftype_id effect_pkill1( "pkill1" );
 const efftype_id effect_pkill2( "pkill2" );
 const efftype_id effect_pkill3( "pkill3" );
-const efftype_id effect_poison( "poison" );
-const efftype_id effect_rat( "rat" );
 const efftype_id effect_recover( "recover" );
 const efftype_id effect_shakes( "shakes" );
 const efftype_id effect_sleep( "sleep" );
 const efftype_id effect_spores( "spores" );
-const efftype_id effect_stemcell_treatment( "stemcell_treatment" );
 const efftype_id effect_stunned( "stunned" );
 const efftype_id effect_tapeworm( "tapeworm" );
-const efftype_id effect_teleglow( "teleglow" );
-const efftype_id effect_tetanus( "tetanus" );
 const efftype_id effect_took_prozac( "took_prozac" );
 const efftype_id effect_took_xanax( "took_xanax" );
-const efftype_id effect_valium( "valium" );
 const efftype_id effect_visuals( "visuals" );
 const efftype_id effect_weed_high( "weed_high" );
 const efftype_id effect_winded( "winded" );
@@ -158,17 +153,9 @@ const efftype_id effect_cough_suppress( "cough_suppress" );
 
 const matype_id style_none( "style_none" );
 
-const vitamin_id vitamin_iron( "iron" );
-
-// use this instead of having to type out 26 spaces like before
-static const std::string header_spaces( 26, ' ' );
-
 stats player_stats;
 
 static const itype_id OPTICAL_CLOAK_ITEM_ID( "optical_cloak" );
-
-static bool should_combine_bps( const player &, size_t, size_t );
-
 
 player_morale_ptr::player_morale_ptr( const player_morale_ptr &rhs ) :
     std::unique_ptr<player_morale>( rhs ? new player_morale( *rhs ) : nullptr )
@@ -200,32 +187,23 @@ player_morale_ptr::~player_morale_ptr()
 {
 }
 
-struct stat_mod {
-    int strength = 0;
-    int dexterity = 0;
-    int intelligence = 0;
-    int perception = 0;
-
-    int speed = 0;
-};
-
-static stat_mod get_pain_penalty( const player &p )
+stat_mod player::get_pain_penalty() const
 {
     stat_mod ret;
-    int pain = p.get_perceived_pain();
+    int pain = get_perceived_pain();
     if( pain <= 0 ) {
         return ret;
     }
 
     int stat_penalty = std::floor( std::pow( pain, 0.8f ) / 10.0f );
 
-    bool ceno = p.has_trait( "CENOBITE" );
+    bool ceno = has_trait( "CENOBITE" );
     if( !ceno ) {
         ret.strength = stat_penalty;
         ret.dexterity = stat_penalty;
     }
 
-    if( !p.has_trait( "INT_SLIME" ) ) {
+    if( !has_trait( "INT_SLIME" ) ) {
         ret.intelligence = 1 + stat_penalty;
     } else {
         ret.intelligence = 1 + pain / 5;
@@ -413,7 +391,7 @@ void player::reset_stats()
 
     // Pain
     if( get_perceived_pain() > 0 ) {
-        const auto ppen = get_pain_penalty( *this );
+        const auto ppen = get_pain_penalty();
         mod_str_bonus( -ppen.strength );
         mod_dex_bonus( -ppen.dexterity );
         mod_int_bonus( -ppen.intelligence );
@@ -598,7 +576,7 @@ void player::process_turn()
     // auto-learning. This is here because skill-increases happens all over the place:
     // SkillLevel::readBook (has no connection to the skill or the player),
     // player::read, player::practice, ...
-    ///\EFFECT_UNARMED >1 allows spontaneous discovery of brawling martial art style
+    /** @EFFECT_UNARMED >1 allows spontaneous discovery of brawling martial art style */
     if( get_skill_level( skill_unarmed ) >= 2 ) {
         const matype_id brawling( "style_brawling" );
         if( !has_martialart( brawling ) ) {
@@ -1498,7 +1476,7 @@ void player::temp_equalizer( body_part bp1, body_part bp2 )
     temp_cur[bp1] += diff;
 }
 
-static int hunger_speed_penalty( int hunger )
+int player::hunger_speed_penalty( int hunger )
 {
     // We die at 6000 hunger
     // Hunger hits speed less hard than thirst does
@@ -1512,7 +1490,7 @@ static int hunger_speed_penalty( int hunger )
     return ( int )multi_lerp( hunger_thresholds, hunger );
 }
 
-static int thirst_speed_penalty( int thirst )
+int player::thirst_speed_penalty( int thirst )
 {
     // We die at 1200 thirst
     // Start by dropping speed really fast, but then level it off a bit
@@ -1535,7 +1513,7 @@ void player::recalc_speed_bonus()
     }
     mod_speed_bonus( -carry_penalty );
 
-    mod_speed_bonus( -get_pain_penalty( *this ).speed );
+    mod_speed_bonus( -get_pain_penalty().speed );
 
     if( get_painkiller() >= 10 ) {
         int pkill_penalty = int( get_painkiller() * .1 );
@@ -1767,23 +1745,23 @@ int player::swim_speed() const
     const auto usable = exclusive_flag_coverage( "ALLOWS_NATURAL_ATTACKS" );
     float hand_bonus_mult = ( usable.test( bp_hand_l ) ? 0.5f : 0.0f ) +
                             ( usable.test( bp_hand_r ) ? 0.5f : 0.0f );
-    ///\EFFECT_STR increases swim speed bonus from PAWS
+    /** @EFFECT_STR increases swim speed bonus from PAWS */
     if( has_trait( "PAWS" ) ) {
         ret -= hand_bonus_mult * ( 20 + str_cur * 3 );
     }
-    ///\EFFECT_STR increases swim speed bonus from PAWS_LARGE
+    /** @EFFECT_STR increases swim speed bonus from PAWS_LARGE */
     if( has_trait( "PAWS_LARGE" ) ) {
         ret -= hand_bonus_mult * ( 20 + str_cur * 4 );
     }
-    ///\EFFECT_STR increases swim speed bonus from swim_fins
+    /** @EFFECT_STR increases swim speed bonus from swim_fins */
     if( is_wearing( "swim_fins" ) ) {
         ret -= ( 15 * str_cur ) / ( 3 - shoe_type_count( "swim_fins" ) );
     }
-    ///\EFFECT_STR increases swim speed bonus from WEBBED
+    /** @EFFECT_STR increases swim speed bonus from WEBBED */
     if( has_trait( "WEBBED" ) ) {
         ret -= hand_bonus_mult * ( 60 + str_cur * 5 );
     }
-    ///\EFFECT_STR increases swim speed bonus from TAIL_FIN
+    /** @EFFECT_STR increases swim speed bonus from TAIL_FIN */
     if( has_trait( "TAIL_FIN" ) ) {
         ret -= 100 + str_cur * 10;
     }
@@ -1796,7 +1774,7 @@ int player::swim_speed() const
     if( has_trait( "FAT" ) ) {
         ret -= 30;
     }
-    ///\EFFECT_SWIMMING increases swim speed
+    /** @EFFECT_SWIMMING increases swim speed */
     ret += ( 50 - get_skill_level( skill_swimming ) * 2 ) * ( ( encumb( bp_leg_l ) + encumb(
                 bp_leg_r ) ) / 10 );
     ret += ( 80 - get_skill_level( skill_swimming ) * 3 ) * ( encumb( bp_torso ) / 10 );
@@ -1805,9 +1783,9 @@ int player::swim_speed() const
             ret += i.volume() / 125_ml * ( 10 - get_skill_level( skill_swimming ) );
         }
     }
-    ///\EFFECT_STR increases swim speed
+    /** @EFFECT_STR increases swim speed */
 
-    ///\EFFECT_DEX increases swim speed
+    /** @EFFECT_DEX increases swim speed */
     ret -= str_cur * 6 + dex_cur * 4;
     if( worn_with_flag( "FLOTATION" ) ) {
         ret = std::min( ret, 400 );
@@ -1857,13 +1835,13 @@ bool player::is_immune_effect( const efftype_id &eff ) const
 
 float player::stability_roll() const
 {
-    ///\EFFECT_STR improves player stability roll
+    /** @EFFECT_STR improves player stability roll */
 
-    ///\EFFECT_PER slightly improves player stability roll
+    /** @EFFECT_PER slightly improves player stability roll */
 
-    ///\EFFECT_DEX slightly improves player stability roll
+    /** @EFFECT_DEX slightly improves player stability roll */
 
-    ///\EFFECT_MELEE improves player stability roll
+    /** @EFFECT_MELEE improves player stability roll */
     return get_melee() + get_str() + ( get_per() / 3.0f ) + ( get_dex() / 4.0f );
 }
 
@@ -1982,6 +1960,8 @@ std::string player::save_info() const
 
 void player::memorial( std::ostream &memorial_file, std::string epitaph )
 {
+    static const char *eol = cata_files::eol();
+
     //Size of indents in the memorial file
     const std::string indent = "  ";
 
@@ -2034,67 +2014,67 @@ void player::memorial( std::ostream &memorial_file, std::string epitaph )
     //Header
     std::string version = string_format( "%s", getVersionString() );
     memorial_file << string_format( _( "Cataclysm - Dark Days Ahead version %s memorial file" ),
-                                    version.c_str() ) << "\n";
-    memorial_file << "\n";
-    memorial_file << string_format( _( "In memory of: %s" ), name.c_str() ) << "\n";
+                                    version.c_str() ) << eol;
+    memorial_file << eol;
+    memorial_file << string_format( _( "In memory of: %s" ), name.c_str() ) << eol;
     if( epitaph.length() > 0 ) { //Don't record empty epitaphs
         //~ The "%s" will be replaced by an epitaph as displyed in the memorial files. Replace the quotation marks as appropriate for your language.
-        memorial_file << string_format( pgettext( "epitaph", "\"%s\"" ), epitaph.c_str() ) << "\n\n";
+        memorial_file << string_format( pgettext( "epitaph", "\"%s\"" ), epitaph.c_str() ) << eol << eol;
     }
     //~ First parameter: Pronoun, second parameter: a profession name (with article)
     memorial_file << string_format( _( "%1$s was %2$s when the apocalypse began." ),
-                                    pronoun.c_str(), profession_name.c_str() ) << "\n";
+                                    pronoun.c_str(), profession_name.c_str() ) << eol;
     memorial_file << string_format( _( "%1$s died on %2$s of year %3$d, day %4$d, at %5$s." ),
                                     pronoun.c_str(), season_name_upper( calendar::turn.get_season() ).c_str(),
                                     ( calendar::turn.years() + 1 ),
-                                    ( calendar::turn.days() + 1 ), calendar::turn.print_time().c_str() ) << "\n";
-    memorial_file << kill_place << "\n";
-    memorial_file << "\n";
+                                    ( calendar::turn.days() + 1 ), calendar::turn.print_time().c_str() ) << eol;
+    memorial_file << kill_place << eol;
+    memorial_file << eol;
 
     //Misc
-    memorial_file << string_format( _( "Cash on hand: $%d" ), cash ) << "\n";
-    memorial_file << "\n";
+    memorial_file << string_format( _( "Cash on hand: $%d" ), cash ) << eol;
+    memorial_file << eol;
 
     //HP
 
     const auto limb_hp =
     [this, &memorial_file, &indent]( const std::string & desc, const hp_part bp ) {
-        memorial_file << indent << string_format( desc, get_hp( bp ), get_hp_max( bp ) ) << "\n";
+        memorial_file << indent << string_format( desc, get_hp( bp ), get_hp_max( bp ) ) << eol;
     };
 
-    memorial_file << _( "Final HP:" ) << "\n";
+    memorial_file << _( "Final HP:" ) << eol;
     limb_hp( _( " Head: %d/%d" ), hp_head );
     limb_hp( _( "Torso: %d/%d" ), hp_torso );
     limb_hp( _( "L Arm: %d/%d" ), hp_arm_l );
     limb_hp( _( "R Arm: %d/%d" ), hp_arm_r );
     limb_hp( _( "L Leg: %d/%d" ), hp_leg_l );
     limb_hp( _( "R Leg: %d/%d" ), hp_leg_r );
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Stats
-    memorial_file << _( "Final Stats:" ) << "\n";
+    memorial_file << _( "Final Stats:" ) << eol;
     memorial_file << indent << string_format( _( "Str %d" ), str_cur )
                   << indent << string_format( _( "Dex %d" ), dex_cur )
                   << indent << string_format( _( "Int %d" ), int_cur )
-                  << indent << string_format( _( "Per %d" ), per_cur ) << "\n";
-    memorial_file << _( "Base Stats:" ) << "\n";
+                  << indent << string_format( _( "Per %d" ), per_cur ) << eol;
+    memorial_file << _( "Base Stats:" ) << eol;
     memorial_file << indent << string_format( _( "Str %d" ), str_max )
                   << indent << string_format( _( "Dex %d" ), dex_max )
                   << indent << string_format( _( "Int %d" ), int_max )
-                  << indent << string_format( _( "Per %d" ), per_max ) << "\n";
-    memorial_file << "\n";
+                  << indent << string_format( _( "Per %d" ), per_max ) << eol;
+    memorial_file << eol;
 
     //Last 20 messages
-    memorial_file << _( "Final Messages:" ) << "\n";
+    memorial_file << _( "Final Messages:" ) << eol;
     std::vector<std::pair<std::string, std::string> > recent_messages = Messages::recent_messages( 20 );
     for( auto &recent_message : recent_messages ) {
         memorial_file << indent << recent_message.first << " " << recent_message.second;
-        memorial_file << "\n";
+        memorial_file << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Kill list
-    memorial_file << _( "Kills:" ) << "\n";
+    memorial_file << _( "Kills:" ) << eol;
 
     int total_kills = 0;
 
@@ -2114,45 +2094,45 @@ void player::memorial( std::ostream &memorial_file, std::string epitaph )
     for( const auto entry : kill_counts ) {
         memorial_file << "  " << std::get<1>( entry.first ) << " - "
                       << string_format( "%4d", entry.second ) << " "
-                      << std::get<0>( entry.first ) << "\n";
+                      << std::get<0>( entry.first ) << eol;
     }
 
     if( total_kills == 0 ) {
-        memorial_file << indent << _( "No monsters were killed." ) << "\n";
+        memorial_file << indent << _( "No monsters were killed." ) << eol;
     } else {
-        memorial_file << string_format( _( "Total kills: %d" ), total_kills ) << "\n";
+        memorial_file << string_format( _( "Total kills: %d" ), total_kills ) << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Skills
-    memorial_file << _( "Skills:" ) << "\n";
+    memorial_file << _( "Skills:" ) << eol;
     for( auto &skill : Skill::skills ) {
         SkillLevel next_skill_level = get_skill_level( skill.ident() );
         memorial_file << indent << skill.name() << ": " << next_skill_level.level() << " ("
-                      << next_skill_level.exercise() << "%)\n";
+                      << next_skill_level.exercise() << "%)" << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Traits
-    memorial_file << _( "Traits:" ) << "\n";
+    memorial_file << _( "Traits:" ) << eol;
     for( auto &iter : my_mutations ) {
-        memorial_file << indent << mutation_branch::get_name( iter.first ) << "\n";
+        memorial_file << indent << mutation_branch::get_name( iter.first ) << eol;
     }
     if( !my_mutations.empty() ) {
-        memorial_file << indent << _( "(None)" ) << "\n";
+        memorial_file << indent << _( "(None)" ) << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Effects (illnesses)
-    memorial_file << _( "Ongoing Effects:" ) << "\n";
+    memorial_file << _( "Ongoing Effects:" ) << eol;
     bool had_effect = false;
     if( get_morale_level() >= 100 ) {
         had_effect = true;
-        memorial_file << indent << _( "Elated" ) << "\n";
+        memorial_file << indent << _( "Elated" ) << eol;
     }
     if( get_morale_level() <= -100 ) {
         had_effect = true;
-        memorial_file << indent << _( "Depressed" ) << "\n";
+        memorial_file << indent << _( "Depressed" ) << eol;
     }
     if( get_perceived_pain() > 0 ) {
         had_effect = true;
@@ -2165,40 +2145,40 @@ void player::memorial( std::ostream &memorial_file, std::string epitaph )
             dexbonus -= abs( stim - 15 ) /  8;
         }
         if( dexbonus < 0 ) {
-            memorial_file << indent << _( "Stimulant Overdose" ) << "\n";
+            memorial_file << indent << _( "Stimulant Overdose" ) << eol;
         } else {
-            memorial_file << indent << _( "Stimulant" ) << "\n";
+            memorial_file << indent << _( "Stimulant" ) << eol;
         }
     } else if( stim < 0 ) {
         had_effect = true;
-        memorial_file << indent << _( "Depressants" ) << "\n";
+        memorial_file << indent << _( "Depressants" ) << eol;
     }
     if( !had_effect ) {
-        memorial_file << indent << _( "(None)" ) << "\n";
+        memorial_file << indent << _( "(None)" ) << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Bionics
-    memorial_file << _( "Bionics:" ) << "\n";
+    memorial_file << _( "Bionics:" ) << eol;
     int total_bionics = 0;
     for( size_t i = 0; i < my_bionics.size(); ++i ) {
-        memorial_file << indent << ( i + 1 ) << ": " << bionic_info( my_bionics[i].id ).name << "\n";
+        memorial_file << indent << ( i + 1 ) << ": " << bionic_info( my_bionics[i].id ).name << eol;
         total_bionics++;
     }
     if( total_bionics == 0 ) {
-        memorial_file << indent << _( "No bionics were installed." ) << "\n";
+        memorial_file << indent << _( "No bionics were installed." ) << eol;
     } else {
-        memorial_file << string_format( _( "Total bionics: %d" ), total_bionics ) << "\n";
+        memorial_file << string_format( _( "Total bionics: %d" ), total_bionics ) << eol;
     }
-    memorial_file << string_format( _( "Power: %d/%d" ), power_level,  max_power_level ) << "\n";
-    memorial_file << "\n";
+    memorial_file << string_format( _( "Power: %d/%d" ), power_level,  max_power_level ) << eol;
+    memorial_file << eol;
 
     //Equipment
-    memorial_file << _( "Weapon:" ) << "\n";
-    memorial_file << indent << weapon.invlet << " - " << weapon.tname( 1, false ) << "\n";
-    memorial_file << "\n";
+    memorial_file << _( "Weapon:" ) << eol;
+    memorial_file << indent << weapon.invlet << " - " << weapon.tname( 1, false ) << eol;
+    memorial_file << eol;
 
-    memorial_file << _( "Equipment:" ) << "\n";
+    memorial_file << _( "Equipment:" ) << eol;
     for( auto &elem : worn ) {
         item next_item = elem;
         memorial_file << indent << next_item.invlet << " - " << next_item.tname( 1, false );
@@ -2207,12 +2187,12 @@ void player::memorial( std::ostream &memorial_file, std::string epitaph )
         } else if( next_item.contents.size() == 1 && next_item.contents.front().charges > 0 ) {
             memorial_file << " (" << next_item.contents.front().charges << ")";
         }
-        memorial_file << "\n";
+        memorial_file << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Inventory
-    memorial_file << _( "Inventory:" ) << "\n";
+    memorial_file << _( "Inventory:" ) << eol;
     inv.restack( this );
     inv.sort();
     invslice slice = inv.slice();
@@ -2228,24 +2208,24 @@ void player::memorial( std::ostream &memorial_file, std::string epitaph )
         } else if( next_item.contents.size() == 1 && next_item.contents.front().charges > 0 ) {
             memorial_file << " (" << next_item.contents.front().charges << ")";
         }
-        memorial_file << "\n";
+        memorial_file << eol;
     }
-    memorial_file << "\n";
+    memorial_file << eol;
 
     //Lifetime stats
-    memorial_file << _( "Lifetime Stats" ) << "\n";
+    memorial_file << _( "Lifetime Stats" ) << eol;
     memorial_file << indent << string_format( _( "Distance walked: %d squares" ),
-                  player_stats.squares_walked ) << "\n";
+                  player_stats.squares_walked ) << eol;
     memorial_file << indent << string_format( _( "Damage taken: %d damage" ),
-                  player_stats.damage_taken ) << "\n";
+                  player_stats.damage_taken ) << eol;
     memorial_file << indent << string_format( _( "Damage healed: %d damage" ),
-                  player_stats.damage_healed ) << "\n";
+                  player_stats.damage_healed ) << eol;
     memorial_file << indent << string_format( _( "Headshots: %d" ),
-                  player_stats.headshots ) << "\n";
-    memorial_file << "\n";
+                  player_stats.headshots ) << eol;
+    memorial_file << eol;
 
     //History
-    memorial_file << _( "Game History" ) << "\n";
+    memorial_file << _( "Game History" ) << eol;
     memorial_file << dump_memorial();
 
 }
@@ -2312,15 +2292,14 @@ void player::load_memorial_file( std::istream &fin )
  */
 std::string player::dump_memorial() const
 {
-
+    static const char *eol = cata_files::eol();
     std::stringstream output;
 
     for( auto &elem : memorial_log ) {
-        output << elem << "\n";
+        output << elem << eol;
     }
 
     return output.str();
-
 }
 
 /**
@@ -2358,1033 +2337,6 @@ void player::mod_stat( const std::string &stat, float modifier )
         // Fall through to the creature method.
         Character::mod_stat( stat, modifier );
     }
-}
-
-std::string swim_cost_text( int moves )
-{
-    return string_format( ngettext( "Swimming costs %+d movement point. ",
-                                    "Swimming costs %+d movement points. ",
-                                    moves ),
-                          moves );
-}
-
-std::string run_cost_text( int moves )
-{
-    return string_format( ngettext( "Running costs %+d movement point. ",
-                                    "Running costs %+d movement points. ",
-                                    moves ),
-                          moves );
-}
-
-std::string reload_cost_text( int moves )
-{
-    return string_format( ngettext( "Reloading costs %+d movement point. ",
-                                    "Reloading costs %+d movement points. ",
-                                    moves ),
-                          moves );
-}
-
-std::string melee_cost_text( int moves )
-{
-    return string_format( ngettext( "Melee and thrown attacks cost %+d movement point. ",
-                                    "Melee and thrown attacks cost %+d movement points. ",
-                                    moves ),
-                          moves );
-}
-
-std::string dodge_skill_text( double mod )
-{
-    return string_format( _( "Dodge skill %+.1f. " ), mod );
-}
-
-void player::disp_info()
-{
-    unsigned line;
-    std::vector<std::string> effect_name;
-    std::vector<std::string> effect_text;
-    std::string tmp = "";
-    for( auto &elem : effects ) {
-        for( auto &_effect_it : elem.second ) {
-            tmp = _effect_it.second.disp_name();
-            if( tmp != "" ) {
-                effect_name.push_back( tmp );
-                effect_text.push_back( _effect_it.second.disp_desc() );
-            }
-        }
-    }
-    if( abs( get_morale_level() ) >= 100 ) {
-        bool pos = ( get_morale_level() > 0 );
-        effect_name.push_back( pos ? _( "Elated" ) : _( "Depressed" ) );
-        std::stringstream morale_text;
-        if( abs( get_morale_level() ) >= 200 ) {
-            morale_text << _( "Dexterity" ) << ( pos ? " +" : " " ) <<
-                        get_morale_level() / 200 << "   ";
-        }
-        if( abs( get_morale_level() ) >= 180 ) {
-            morale_text << _( "Strength" ) << ( pos ? " +" : " " ) <<
-                        get_morale_level() / 180 << "   ";
-        }
-        if( abs( get_morale_level() ) >= 125 ) {
-            morale_text << _( "Perception" ) << ( pos ? " +" : " " ) <<
-                        get_morale_level() / 125 << "   ";
-        }
-        morale_text << _( "Intelligence" ) << ( pos ? " +" : " " ) <<
-                    get_morale_level() / 100 << "   ";
-        effect_text.push_back( morale_text.str() );
-    }
-    if( get_perceived_pain() > 0 ) {
-        effect_name.push_back( _( "Pain" ) );
-        const auto ppen = get_pain_penalty( *this );
-        std::stringstream pain_text;
-        if( ppen.strength > 0 ) {
-            pain_text << _( "Strength" ) << " -" << ppen.strength << "   ";
-        }
-        if( ppen.dexterity > 0 ) {
-            pain_text << _( "Dexterity" ) << " -" << ppen.dexterity << "   ";
-        }
-        if( ppen.intelligence > 0 ) {
-            pain_text << _( "Intelligence" ) << " -" << ppen.intelligence << "   ";
-        }
-        if( ppen.perception > 0 ) {
-            pain_text << _( "Perception" ) << " -" << ppen.perception << "   ";
-        }
-        if( ppen.speed > 0 ) {
-            pain_text << _( "Speed" ) << " -" << ppen.speed << "%   ";
-        }
-        effect_text.push_back( pain_text.str() );
-    }
-    if( stim > 0 ) {
-        int dexbonus = stim / 10;
-        int perbonus = stim /  7;
-        int intbonus = stim /  6;
-        if( abs( stim ) >= 30 ) {
-            dexbonus -= abs( stim - 15 ) /  8;
-            perbonus -= abs( stim - 15 ) / 12;
-            intbonus -= abs( stim - 15 ) / 14;
-        }
-
-        if( dexbonus < 0 ) {
-            effect_name.push_back( _( "Stimulant Overdose" ) );
-        } else {
-            effect_name.push_back( _( "Stimulant" ) );
-        }
-        std::stringstream stim_text;
-        stim_text << _( "Speed" ) << " +" << stim << "   " << _( "Intelligence" ) <<
-                  ( intbonus > 0 ? " + " : " " ) << intbonus << "   " << _( "Perception" ) <<
-                  ( perbonus > 0 ? " + " : " " ) << perbonus << "   " << _( "Dexterity" )  <<
-                  ( dexbonus > 0 ? " + " : " " ) << dexbonus;
-        effect_text.push_back( stim_text.str() );
-    } else if( stim < 0 ) {
-        effect_name.push_back( _( "Depressants" ) );
-        std::stringstream stim_text;
-        int dexpen = stim / 10;
-        int perpen = stim /  7;
-        int intpen = stim /  6;
-        // Since dexpen etc. are always less than 0, no need for + signs
-        stim_text << _( "Speed" ) << " " << stim / 4 << "   " << _( "Intelligence" ) << " " << intpen <<
-                  "   " << _( "Perception" ) << " " << perpen << "   " << _( "Dexterity" ) << " " << dexpen;
-        effect_text.push_back( stim_text.str() );
-    }
-
-    if( ( has_trait( "TROGLO" ) && g->is_in_sunlight( pos() ) &&
-          g->weather == WEATHER_SUNNY ) ||
-        ( has_trait( "TROGLO2" ) && g->is_in_sunlight( pos() ) &&
-          g->weather != WEATHER_SUNNY ) ) {
-        effect_name.push_back( _( "In Sunlight" ) );
-        effect_text.push_back( _( "The sunlight irritates you.\n\
-Strength - 1;    Dexterity - 1;    Intelligence - 1;    Perception - 1" ) );
-    } else if( has_trait( "TROGLO2" ) && g->is_in_sunlight( pos() ) ) {
-        effect_name.push_back( _( "In Sunlight" ) );
-        effect_text.push_back( _( "The sunlight irritates you badly.\n\
-Strength - 2;    Dexterity - 2;    Intelligence - 2;    Perception - 2" ) );
-    } else if( has_trait( "TROGLO3" ) && g->is_in_sunlight( pos() ) ) {
-        effect_name.push_back( _( "In Sunlight" ) );
-        effect_text.push_back( _( "The sunlight irritates you terribly.\n\
-Strength - 4;    Dexterity - 4;    Intelligence - 4;    Perception - 4" ) );
-    }
-
-    for( auto &elem : addictions ) {
-        if( elem.sated < 0 && elem.intensity >= MIN_ADDICTION_LEVEL ) {
-            effect_name.push_back( addiction_name( elem ) );
-            effect_text.push_back( addiction_text( elem ) );
-        }
-    }
-
-    unsigned maxy = unsigned( TERMY );
-
-    unsigned infooffsetytop = 11;
-    unsigned infooffsetybottom = 15;
-    std::vector<std::string> traitslist = get_mutations();
-
-    unsigned effect_win_size_y = 1 + unsigned( effect_name.size() );
-    unsigned trait_win_size_y = 1 + unsigned( traitslist.size() );
-    unsigned skill_win_size_y = 1 + unsigned( Skill::skill_count() );
-
-    if( trait_win_size_y + infooffsetybottom > maxy ) {
-        trait_win_size_y = maxy - infooffsetybottom;
-    }
-
-    if( skill_win_size_y + infooffsetybottom > maxy ) {
-        skill_win_size_y = maxy - infooffsetybottom;
-    }
-
-    WINDOW *w_grid_top    = newwin( infooffsetybottom, FULL_SCREEN_WIDTH + 1, VIEW_OFFSET_Y,
-                                    VIEW_OFFSET_X );
-    WINDOW *w_grid_skill  = newwin( skill_win_size_y + 1, 27, infooffsetybottom + VIEW_OFFSET_Y,
-                                    0 + VIEW_OFFSET_X );
-    WINDOW *w_grid_trait  = newwin( trait_win_size_y + 1, 27, infooffsetybottom + VIEW_OFFSET_Y,
-                                    27 + VIEW_OFFSET_X );
-    WINDOW *w_grid_effect = newwin( effect_win_size_y + 1, 28, infooffsetybottom + VIEW_OFFSET_Y,
-                                    53 + VIEW_OFFSET_X );
-
-    WINDOW *w_tip     = newwin( 1, FULL_SCREEN_WIDTH,  VIEW_OFFSET_Y,  0 + VIEW_OFFSET_X );
-    WINDOW *w_stats   = newwin( 9, 26,  1 + VIEW_OFFSET_Y,  0 + VIEW_OFFSET_X );
-    WINDOW *w_traits  = newwin( trait_win_size_y, 26, infooffsetybottom + VIEW_OFFSET_Y,
-                                27 + VIEW_OFFSET_X );
-    WINDOW *w_encumb  = newwin( 9, 26,  1 + VIEW_OFFSET_Y, 27 + VIEW_OFFSET_X );
-    WINDOW *w_effects = newwin( effect_win_size_y, 26, infooffsetybottom + VIEW_OFFSET_Y,
-                                54 + VIEW_OFFSET_X );
-    WINDOW *w_speed   = newwin( 9, 26,  1 + VIEW_OFFSET_Y, 54 + VIEW_OFFSET_X );
-    WINDOW *w_skills  = newwin( skill_win_size_y, 26, infooffsetybottom + VIEW_OFFSET_Y,
-                                0 + VIEW_OFFSET_X );
-    WINDOW *w_info    = newwin( 3, FULL_SCREEN_WIDTH, infooffsetytop + VIEW_OFFSET_Y,
-                                0 + VIEW_OFFSET_X );
-
-    for( unsigned i = 0; i < unsigned( FULL_SCREEN_WIDTH + 1 ); i++ ) {
-        //Horizontal line top grid
-        mvwputch( w_grid_top, 10, i, BORDER_COLOR, LINE_OXOX );
-        mvwputch( w_grid_top, 14, i, BORDER_COLOR, LINE_OXOX );
-
-        //Vertical line top grid
-        if( i <= infooffsetybottom ) {
-            mvwputch( w_grid_top, i, 26, BORDER_COLOR, LINE_XOXO );
-            mvwputch( w_grid_top, i, 53, BORDER_COLOR, LINE_XOXO );
-            mvwputch( w_grid_top, i, FULL_SCREEN_WIDTH, BORDER_COLOR, LINE_XOXO );
-        }
-
-        //Horizontal line skills
-        if( i <= 26 ) {
-            mvwputch( w_grid_skill, skill_win_size_y, i, BORDER_COLOR, LINE_OXOX );
-        }
-
-        //Vertical line skills
-        if( i <= skill_win_size_y ) {
-            mvwputch( w_grid_skill, i, 26, BORDER_COLOR, LINE_XOXO );
-        }
-
-        //Horizontal line traits
-        if( i <= 26 ) {
-            mvwputch( w_grid_trait, trait_win_size_y, i, BORDER_COLOR, LINE_OXOX );
-        }
-
-        //Vertical line traits
-        if( i <= trait_win_size_y ) {
-            mvwputch( w_grid_trait, i, 26, BORDER_COLOR, LINE_XOXO );
-        }
-
-        //Horizontal line effects
-        if( i <= 27 ) {
-            mvwputch( w_grid_effect, effect_win_size_y, i, BORDER_COLOR, LINE_OXOX );
-        }
-
-        //Vertical line effects
-        if( i <= effect_win_size_y ) {
-            mvwputch( w_grid_effect, i, 0, BORDER_COLOR, LINE_XOXO );
-            mvwputch( w_grid_effect, i, 27, BORDER_COLOR, LINE_XOXO );
-        }
-    }
-
-    //Intersections top grid
-    mvwputch( w_grid_top, 14, 26, BORDER_COLOR, LINE_OXXX ); // T
-    mvwputch( w_grid_top, 14, 53, BORDER_COLOR, LINE_OXXX ); // T
-    mvwputch( w_grid_top, 10, 26, BORDER_COLOR, LINE_XXOX ); // _|_
-    mvwputch( w_grid_top, 10, 53, BORDER_COLOR, LINE_XXOX ); // _|_
-    mvwputch( w_grid_top, 10, FULL_SCREEN_WIDTH, BORDER_COLOR, LINE_XOXX ); // -|
-    mvwputch( w_grid_top, 14, FULL_SCREEN_WIDTH, BORDER_COLOR, LINE_XOXX ); // -|
-    wrefresh( w_grid_top );
-
-    mvwputch( w_grid_skill, skill_win_size_y, 26, BORDER_COLOR, LINE_XOOX ); // _|
-
-    if( skill_win_size_y > trait_win_size_y ) {
-        mvwputch( w_grid_skill, trait_win_size_y, 26, BORDER_COLOR, LINE_XXXO );    // |-
-    } else if( skill_win_size_y == trait_win_size_y ) {
-        mvwputch( w_grid_skill, trait_win_size_y, 26, BORDER_COLOR, LINE_XXOX );    // _|_
-    }
-
-    mvwputch( w_grid_trait, trait_win_size_y, 26, BORDER_COLOR, LINE_XOOX ); // _|
-
-    if( trait_win_size_y > effect_win_size_y ) {
-        mvwputch( w_grid_trait, effect_win_size_y, 26, BORDER_COLOR, LINE_XXXO ); // |-
-    } else if( trait_win_size_y == effect_win_size_y ) {
-        mvwputch( w_grid_trait, effect_win_size_y, 26, BORDER_COLOR, LINE_XXOX ); // _|_
-    } else if( trait_win_size_y < effect_win_size_y ) {
-        mvwputch( w_grid_trait, trait_win_size_y, 26, BORDER_COLOR, LINE_XOXX ); // -|
-        mvwputch( w_grid_trait, effect_win_size_y, 26, BORDER_COLOR, LINE_XXOO ); // |_
-    }
-
-    mvwputch( w_grid_effect, effect_win_size_y, 0, BORDER_COLOR, LINE_XXOO ); // |_
-    mvwputch( w_grid_effect, effect_win_size_y, 27, BORDER_COLOR, LINE_XOOX ); // _|
-
-    wrefresh( w_grid_skill );
-    wrefresh( w_grid_effect );
-    wrefresh( w_grid_trait );
-
-    //-1 for header
-    trait_win_size_y--;
-    skill_win_size_y--;
-    effect_win_size_y--;
-
-    // Print name and header
-    // Post-humanity trumps your pre-Cataclysm life.
-    if( crossed_threshold() ) {
-        std::string race;
-        for( auto &mut : my_mutations ) {
-            const auto &mdata = mutation_branch::get( mut.first );
-            if( mdata.threshold ) {
-                race = mdata.name;
-                break;
-            }
-        }
-        //~ player info window: 1s - name, 2s - gender, 3s - Prof or Mutation name
-        mvwprintw( w_tip, 0, 0, _( "%1$s | %2$s | %3$s" ), name.c_str(),
-                   male ? _( "Male" ) : _( "Female" ), race.c_str() );
-    } else if( prof == NULL || prof == prof->generic() ) {
-        // Regular person. Nothing interesting.
-        //~ player info window: 1s - name, 2s - gender, '|' - field separator.
-        mvwprintw( w_tip, 0, 0, _( "%1$s | %2$s" ), name.c_str(),
-                   male ? _( "Male" ) : _( "Female" ) );
-    } else {
-        mvwprintw( w_tip, 0, 0, _( "%1$s | %2$s | %3$s" ), name.c_str(),
-                   male ? _( "Male" ) : _( "Female" ), prof->gender_appropriate_name( male ).c_str() );
-    }
-
-    input_context ctxt( "PLAYER_INFO" );
-    ctxt.register_updown();
-    ctxt.register_action( "NEXT_TAB", _( "Cycle to next category" ) );
-    ctxt.register_action( "QUIT" );
-    ctxt.register_action( "CONFIRM", _( "Toggle skill training" ) );
-    ctxt.register_action( "HELP_KEYBINDINGS" );
-    std::string action;
-
-    std::string help_msg = string_format( _( "Press %s for help." ),
-                                          ctxt.get_desc( "HELP_KEYBINDINGS" ).c_str() );
-    mvwprintz( w_tip, 0, FULL_SCREEN_WIDTH - utf8_width( help_msg ), c_ltred, help_msg.c_str() );
-    help_msg.clear();
-    wrefresh( w_tip );
-
-    // First!  Default STATS screen.
-    const char *title_STATS = _( "STATS" );
-    mvwprintz( w_stats, 0, 13 - utf8_width( title_STATS ) / 2, c_ltgray, title_STATS );
-
-    // Stats
-    const auto display_stat = [&w_stats]( const char *name, int cur, int max, int line_n ) {
-        nc_color cstatus;
-        if( cur <= 0 ) {
-            cstatus = c_dkgray;
-        } else if( cur < max / 2 ) {
-            cstatus = c_red;
-        } else if( cur < max ) {
-            cstatus = c_ltred;
-        } else if( cur == max ) {
-            cstatus = c_white;
-        } else if( cur < max * 1.5 ) {
-            cstatus = c_ltgreen;
-        } else {
-            cstatus = c_green;
-        }
-
-        mvwprintz( w_stats, line_n, 1, c_ltgray, name );
-        mvwprintz( w_stats, line_n, 18, cstatus, "%2d", cur );
-        mvwprintz( w_stats, line_n, 21, c_ltgray, "(%2d)", max );
-    };
-
-    display_stat( _( "Strength:" ),     str_cur, str_max, 2 );
-    display_stat( _( "Dexterity:" ),    dex_cur, dex_max, 3 );
-    display_stat( _( "Intelligence:" ), int_cur, int_max, 4 );
-    display_stat( _( "Perception:" ),   per_cur, per_max, 5 );
-
-    wrefresh( w_stats );
-
-    // Next, draw encumberment.
-    const char *title_ENCUMB = _( "ENCUMBRANCE AND WARMTH" );
-    mvwprintz( w_encumb, 0, 13 - utf8_width( title_ENCUMB ) / 2, c_ltgray, title_ENCUMB );
-    print_encumbrance( w_encumb );
-    wrefresh( w_encumb );
-
-    // Next, draw traits.
-    const char *title_TRAITS = _( "TRAITS" );
-    mvwprintz( w_traits, 0, 13 - utf8_width( title_TRAITS ) / 2, c_ltgray, title_TRAITS );
-    std::sort( traitslist.begin(), traitslist.end(), trait_display_sort );
-    for( size_t i = 0; i < traitslist.size() && i < trait_win_size_y; i++ ) {
-        const auto &mdata = mutation_branch::get( traitslist[i] );
-        const auto color = mdata.get_display_color();
-        mvwprintz( w_traits, int( i ) + 1, 1, color, mdata.name.c_str() );
-    }
-    wrefresh( w_traits );
-
-    // Next, draw effects.
-    const char *title_EFFECTS = _( "EFFECTS" );
-    mvwprintz( w_effects, 0, 13 - utf8_width( title_EFFECTS ) / 2, c_ltgray, title_EFFECTS );
-    for( size_t i = 0; i < effect_name.size() && i < effect_win_size_y; i++ ) {
-        mvwprintz( w_effects, int( i ) + 1, 0, c_ltgray, "%s", effect_name[i].c_str() );
-    }
-    wrefresh( w_effects );
-
-    // Next, draw skills.
-    line = 1;
-
-    const char *title_SKILLS = _( "SKILLS" );
-    mvwprintz( w_skills, 0, 13 - utf8_width( title_SKILLS ) / 2, c_ltgray, title_SKILLS );
-
-    auto skillslist = Skill::get_skills_sorted_by( [&]( Skill const & a, Skill const & b ) {
-        int const level_a = get_skill_level( a.ident() ).exercised_level();
-        int const level_b = get_skill_level( b.ident() ).exercised_level();
-        return level_a > level_b || ( level_a == level_b && a.name() < b.name() );
-    } );
-
-    for( auto &elem : skillslist ) {
-        SkillLevel level = get_skill_level( elem->ident() );
-
-        // Default to not training and not rusting
-        nc_color text_color = c_blue;
-        bool not_capped = level.can_train();
-        bool training = level.isTraining();
-        bool rusting = level.isRusting();
-
-        if( training && rusting ) {
-            text_color = c_ltred;
-        } else if( training && not_capped ) {
-            text_color = c_ltblue;
-        } else if( rusting ) {
-            text_color = c_red;
-        } else if( !not_capped ) {
-            text_color = c_white;
-        }
-
-        int level_num = ( int )level;
-        int exercise = level.exercise();
-
-        // TODO: this skill list here is used in other places as well. Useless redundancy and
-        // dependency. Maybe change it into a flag of the skill that indicates it's a skill used
-        // by the bionic?
-        static const std::array<skill_id, 5> cqb_skills = { {
-                skill_id( "melee" ), skill_id( "unarmed" ), skill_id( "cutting" ),
-                skill_id( "bashing" ), skill_id( "stabbing" ),
-            }
-        };
-        if( has_active_bionic( "bio_cqb" ) &&
-            std::find( cqb_skills.begin(), cqb_skills.end(), elem->ident() ) != cqb_skills.end() ) {
-            level_num = 5;
-            exercise = 0;
-            text_color = c_yellow;
-        }
-
-        if( line < skill_win_size_y + 1 ) {
-            mvwprintz( w_skills, line, 1, text_color, "%s:", ( elem )->name().c_str() );
-            mvwprintz( w_skills, line, 19, text_color, "%-2d(%2d%%)", level_num,
-                       ( exercise <  0 ? 0 : exercise ) );
-            line++;
-        }
-    }
-    wrefresh( w_skills );
-
-    // Finally, draw speed.
-    const char *title_SPEED = _( "SPEED" );
-    mvwprintz( w_speed, 0, 13 - utf8_width( title_SPEED ) / 2, c_ltgray, title_SPEED );
-    mvwprintz( w_speed, 1,  1, c_ltgray, _( "Base Move Cost:" ) );
-    mvwprintz( w_speed, 2,  1, c_ltgray, _( "Current Speed:" ) );
-    int newmoves = get_speed();
-    int pen = 0;
-    line = 3;
-    if( weight_carried() > weight_capacity() ) {
-        pen = 25 * ( weight_carried() - weight_capacity() ) / ( weight_capacity() );
-        mvwprintz( w_speed, line, 1, c_red, _( "Overburdened        -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    pen = get_morale_level() / 25;
-    if( abs( pen ) >= 4 ) {
-        if( pen > 10 ) {
-            pen = 10;
-        } else if( pen < -10 ) {
-            pen = -10;
-        }
-        if( pen > 0 )
-            mvwprintz( w_speed, line, 1, c_green, _( "Good mood           +%s%d%%" ),
-                       ( pen < 10 ? " " : "" ), pen );
-        else
-            mvwprintz( w_speed, line, 1, c_red, _( "Depressed           -%s%d%%" ),
-                       ( abs( pen ) < 10 ? " " : "" ), abs( pen ) );
-        line++;
-    }
-    pen = get_pain_penalty( *this ).speed;
-    if( pen >= 1 ) {
-        mvwprintz( w_speed, line, 1, c_red, _( "Pain                -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( get_painkiller() >= 10 ) {
-        pen = int( get_painkiller() * .1 );
-        mvwprintz( w_speed, line, 1, c_red, _( "Painkillers         -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( stim != 0 ) {
-        pen = std::min( 10, stim / 4 );
-        if( pen > 0 )
-            mvwprintz( w_speed, line, 1, c_green, _( "Stimulants          +%s%d%%" ),
-                       ( pen < 10 ? " " : "" ), pen );
-        else
-            mvwprintz( w_speed, line, 1, c_red, _( "Depressants         -%s%d%%" ),
-                       ( abs( pen ) < 10 ? " " : "" ), abs( pen ) );
-        line++;
-    }
-    if( get_thirst() > 40 ) {
-        pen = abs( thirst_speed_penalty( get_thirst() ) );
-        mvwprintz( w_speed, line, 1, c_red, _( "Thirst              -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( get_hunger() > 100 ) {
-        pen = abs( hunger_speed_penalty( get_hunger() ) );
-        mvwprintz( w_speed, line, 1, c_red, _( "Hunger              -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( has_trait( "SUNLIGHT_DEPENDENT" ) && !g->is_in_sunlight( pos() ) ) {
-        pen = ( g->light_level( posz() ) >= 12 ? 5 : 10 );
-        mvwprintz( w_speed, line, 1, c_red, _( "Out of Sunlight     -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( has_trait( "COLDBLOOD4" ) && g->get_temperature() > 65 ) {
-        pen = ( g->get_temperature() - 65 ) / 2;
-        mvwprintz( w_speed, line, 1, c_green, _( "Cold-Blooded        +%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-    if( ( has_trait( "COLDBLOOD" ) || has_trait( "COLDBLOOD2" ) ||
-          has_trait( "COLDBLOOD3" ) || has_trait( "COLDBLOOD4" ) ) &&
-        g->get_temperature() < 65 ) {
-        if( has_trait( "COLDBLOOD3" ) || has_trait( "COLDBLOOD4" ) ) {
-            pen = ( 65 - g->get_temperature() ) / 2;
-        } else if( has_trait( "COLDBLOOD2" ) ) {
-            pen = ( 65 - g->get_temperature() ) / 3;
-        } else {
-            pen = ( 65 - g->get_temperature() ) / 5;
-        }
-        mvwprintz( w_speed, line, 1, c_red, _( "Cold-Blooded        -%s%d%%" ),
-                   ( pen < 10 ? " " : "" ), pen );
-        line++;
-    }
-
-    std::map<std::string, int> speed_effects;
-    std::string dis_text = "";
-    for( auto &elem : effects ) {
-        for( auto &_effect_it : elem.second ) {
-            auto &it = _effect_it.second;
-            bool reduced = resists_effect( it );
-            int move_adjust = it.get_mod( "SPEED", reduced );
-            if( move_adjust != 0 ) {
-                dis_text = it.get_speed_name();
-                speed_effects[dis_text] += move_adjust;
-            }
-        }
-    }
-
-    for( auto &speed_effect : speed_effects ) {
-        nc_color col = ( speed_effect.second > 0 ? c_green : c_red );
-        mvwprintz( w_speed, line, 1, col, "%s", _( speed_effect.first.c_str() ) );
-        mvwprintz( w_speed, line, 21, col, ( speed_effect.second > 0 ? "+" : "-" ) );
-        mvwprintz( w_speed, line, ( abs( speed_effect.second ) >= 10 ? 22 : 23 ), col, "%d%%",
-                   abs( speed_effect.second ) );
-        line++;
-    }
-
-    int quick_bonus = int( newmoves - ( newmoves / 1.1 ) );
-    int bio_speed_bonus = quick_bonus;
-    if( has_trait( "QUICK" ) && has_bionic( "bio_speed" ) ) {
-        bio_speed_bonus = int( newmoves / 1.1 - ( newmoves / 1.1 / 1.1 ) );
-        std::swap( quick_bonus, bio_speed_bonus );
-    }
-    if( has_trait( "QUICK" ) ) {
-        mvwprintz( w_speed, line, 1, c_green, _( "Quick               +%s%d%%" ),
-                   ( quick_bonus < 10 ? " " : "" ), quick_bonus );
-        line++;
-    }
-    if( has_bionic( "bio_speed" ) ) {
-        mvwprintz( w_speed, line, 1, c_green, _( "Bionic Speed        +%s%d%%" ),
-                   ( bio_speed_bonus < 10 ? " " : "" ), bio_speed_bonus );
-    }
-
-    int runcost = run_cost( 100 );
-    nc_color col = ( runcost <= 100 ? c_green : c_red );
-    mvwprintz( w_speed, 1, ( runcost  >= 100 ? 21 : ( runcost  < 10 ? 23 : 22 ) ), col,
-               "%d", runcost );
-    col = ( newmoves >= 100 ? c_green : c_red );
-    mvwprintz( w_speed, 2, ( newmoves >= 100 ? 21 : ( newmoves < 10 ? 23 : 22 ) ), col,
-               "%d", newmoves );
-    wrefresh( w_speed );
-
-    refresh();
-
-    int curtab = 1;
-    size_t min, max;
-    line = 0;
-    bool done = false;
-    size_t half_y = 0;
-
-    // Initial printing is DONE.  Now we give the player a chance to scroll around
-    // and "hover" over different items for more info.
-    do {
-        werase( w_info );
-        switch( curtab ) {
-            case 1: // Stats tab
-                mvwprintz( w_stats, 0, 0, h_ltgray, header_spaces.c_str() );
-                mvwprintz( w_stats, 0, 13 - utf8_width( title_STATS ) / 2, h_ltgray, title_STATS );
-
-                // Clear bonus/penalty menu.
-                mvwprintz( w_stats, 6, 0, c_ltgray, "%26s", "" );
-                mvwprintz( w_stats, 7, 0, c_ltgray, "%26s", "" );
-                mvwprintz( w_stats, 8, 0, c_ltgray, "%26s", "" );
-
-                if( line == 0 ) {
-                    // Display player current strength effects
-                    mvwprintz( w_stats, 2, 1, h_ltgray, _( "Strength:" ) );
-                    mvwprintz( w_stats, 6, 1, c_magenta, _( "Base HP:" ) );
-                    mvwprintz( w_stats, 6, 22, c_magenta, "%3d", hp_max[1] );
-                    if( get_option<std::string>( "USE_METRIC_WEIGHTS" ) == "kg" ) {
-                        mvwprintz( w_stats, 7, 1, c_magenta, _( "Carry weight(kg):" ) );
-                    } else {
-                        mvwprintz( w_stats, 7, 1, c_magenta, _( "Carry weight(lbs):" ) );
-                    }
-                    mvwprintz( w_stats, 7, 21, c_magenta, "%4.1f", convert_weight( weight_capacity() ) );
-                    mvwprintz( w_stats, 8, 1, c_magenta, _( "Melee damage:" ) );
-                    mvwprintz( w_stats, 8, 22, c_magenta, "%3.1f", bonus_damage( false ) );
-
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta,
-                                    _( "Strength affects your melee damage, the amount of weight you can carry, your total HP, "
-                                       "your resistance to many diseases, and the effectiveness of actions which require brute force." ) );
-                } else if( line == 1 ) {
-                    // Display player current dexterity effects
-                    mvwprintz( w_stats, 3, 1, h_ltgray, _( "Dexterity:" ) );
-
-                    mvwprintz( w_stats, 6, 1, c_magenta, _( "Melee to-hit bonus:" ) );
-                    mvwprintz( w_stats, 6, 22, c_magenta, "%+.2lf", get_hit_base() );
-                    if( throw_dex_mod( false ) <= 0 ) {
-                        mvwprintz( w_stats, 8, 1, c_magenta, _( "Throwing bonus:" ) );
-                    } else {
-                        mvwprintz( w_stats, 8, 1, c_magenta, _( "Throwing penalty:" ) );
-                    }
-                    mvwprintz( w_stats, 8, 22, c_magenta, "%+3d", -( throw_dex_mod( false ) ) );
-
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta,
-                                    _( "Dexterity affects your chance to hit in melee combat, helps you steady your "
-                                       "gun for ranged combat, and enhances many actions that require finesse." ) );
-                } else if( line == 2 ) {
-                    // Display player current intelligence effects
-                    mvwprintz( w_stats, 4, 1, h_ltgray, _( "Intelligence:" ) );
-                    mvwprintz( w_stats, 6, 1, c_magenta, _( "Read times:" ) );
-                    mvwprintz( w_stats, 6, 21, c_magenta, "%3d%%", read_speed( false ) );
-                    mvwprintz( w_stats, 7, 1, c_magenta, _( "Skill rust:" ) );
-                    mvwprintz( w_stats, 7, 22, c_magenta, "%2d%%", rust_rate( false ) );
-                    mvwprintz( w_stats, 8, 1, c_magenta, _( "Crafting Bonus:" ) );
-                    mvwprintz( w_stats, 8, 22, c_magenta, "%2d%%", get_int() );
-
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta,
-                                    _( "Intelligence is less important in most situations, but it is vital for more complex tasks like "
-                                       "electronics crafting.  It also affects how much skill you can pick up from reading a book." ) );
-                } else if( line == 3 ) {
-                    // Display player current perception effects
-                    mvwprintz( w_stats, 5, 1, h_ltgray, _( "Perception:" ) );
-                    mvwprintz( w_stats, 7, 1, c_magenta, _( "Trap detection level:" ) );
-                    mvwprintz( w_stats, 7, 23, c_magenta, "%2d", get_per() );
-
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta,
-                                    _( "Perception is the most important stat for ranged combat.  It's also used for "
-                                       "detecting traps and other things of interest." ) );
-                }
-                wrefresh( w_stats );
-                wrefresh( w_info );
-
-                action = ctxt.handle_input();
-                if( action == "DOWN" ) {
-                    line++;
-                    if( line == 4 ) {
-                        line = 0;
-                    }
-                } else if( action == "UP" ) {
-                    if( line == 0 ) {
-                        line = 3;
-                    } else {
-                        line--;
-                    }
-                } else if( action == "NEXT_TAB" ) {
-                    mvwprintz( w_stats, 0, 0, c_ltgray, header_spaces.c_str() );
-                    mvwprintz( w_stats, 0, 13 - utf8_width( title_STATS ) / 2, c_ltgray, title_STATS );
-                    wrefresh( w_stats );
-                    line = 0;
-                    curtab++;
-                } else if( action == "QUIT" ) {
-                    done = true;
-                }
-                mvwprintz( w_stats, 2, 1, c_ltgray, _( "Strength:" ) );
-                mvwprintz( w_stats, 3, 1, c_ltgray, _( "Dexterity:" ) );
-                mvwprintz( w_stats, 4, 1, c_ltgray, _( "Intelligence:" ) );
-                mvwprintz( w_stats, 5, 1, c_ltgray, _( "Perception:" ) );
-                wrefresh( w_stats );
-                break;
-            case 2: { // Encumberment tab
-                werase( w_encumb );
-                mvwprintz( w_encumb, 0, 13 - utf8_width( title_ENCUMB ) / 2, h_ltgray, title_ENCUMB );
-                print_encumbrance( w_encumb, line );
-                wrefresh( w_encumb );
-
-                werase( w_info );
-                std::string s;
-                if( line == 0 ) {
-                    const int melee_roll_pen = std::max( -encumb( bp_torso ), -80 );
-                    s += string_format( _( "Melee attack rolls %+d%%; " ), melee_roll_pen );
-                    s += dodge_skill_text( - ( encumb( bp_torso ) / 10 ) );
-                    s += swim_cost_text( ( encumb( bp_torso ) / 10 ) * ( 80 - get_skill_level( skill_swimming ) * 3 ) );
-                    s += melee_cost_text( encumb( bp_torso ) );
-                } else if( line == 1 ) { //Torso
-                    s += _( "Head encumbrance has no effect; it simply limits how much you can put on." );
-                } else if( line == 2 ) { //Head
-                    s += string_format( _( "Perception %+d when checking traps or firing ranged weapons;\n"
-                                           "Perception %+.1f when throwing items." ),
-                                        -( encumb( bp_eyes ) / 10 ),
-                                        double( -( encumb( bp_eyes ) / 10 ) ) / 2 );
-                } else if( line == 3 ) { //Eyes
-                    s += _( "Covering your mouth will make it more difficult to breathe and catch your breath." );
-                } else if( line == 4 ) { //Left Arm
-                    s += _( "Arm encumbrance affects stamina cost of melee attacks and accuracy with ranged weapons." );
-                } else if( line == 5 ) { //Right Arm
-                    s += _( "Arm encumbrance affects stamina cost of melee attacks and accuracy with ranged weapons." );
-                } else if( line == 6 ) { //Left Hand
-                    s += _( "Reduces the speed at which you can handle or manipulate items\n" );
-                    s += reload_cost_text( ( encumb( bp_hand_l ) / 10 ) * 15 );
-                    s += string_format( _( "Dexterity %+d when throwing items;\n" ), -( encumb( bp_hand_l ) / 10 ) );
-                    s += melee_cost_text( encumb( bp_hand_l ) / 2 );
-                } else if( line == 7 ) { //Right Hand
-                    s += _( "Reduces the speed at which you can handle or manipulate items\n" );
-                    s += reload_cost_text( ( encumb( bp_hand_r ) / 10 ) * 15 );
-                    s += string_format( _( "Dexterity %+d when throwing items;\n" ), -( encumb( bp_hand_r ) / 10 ) );
-                    s += melee_cost_text( encumb( bp_hand_r ) / 2 );
-                } else if( line == 8 ) { //Left Leg
-                    s += run_cost_text( int( encumb( bp_leg_l ) * 0.15 ) );
-                    s += swim_cost_text( ( encumb( bp_leg_l ) / 10 ) * ( 50 - get_skill_level(
-                                             skill_swimming ) * 2 ) / 2 );
-                    s += dodge_skill_text( -encumb( bp_leg_l ) / 10.0 / 4.0 );
-                } else if( line == 9 ) { //Right Leg
-                    s += run_cost_text( int( encumb( bp_leg_r ) * 0.15 ) );
-                    s += swim_cost_text( ( encumb( bp_leg_r ) / 10 ) * ( 50 - get_skill_level(
-                                             skill_swimming ) * 2 ) / 2 );
-                    s += dodge_skill_text( -encumb( bp_leg_r ) / 10.0 / 4.0 );
-                } else if( line == 10 ) { //Left Foot
-                    s += run_cost_text( int( encumb( bp_foot_l ) * 0.25 ) );
-                } else if( line == 11 ) { //Right Foot
-                    s += run_cost_text( int( encumb( bp_foot_r ) * 0.25 ) );
-                }
-                fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta, s );
-                wrefresh( w_info );
-
-                action = ctxt.handle_input();
-                if( action == "DOWN" ) {
-                    if( line < num_bp - 1 ) {
-                        if( bp_aiOther[line] == line + 1 && // first of a pair
-                            should_combine_bps( *this, line, bp_aiOther[line] ) ) {
-                            line += ( line < num_bp - 2 ) ? 2 : 0; // skip a line if we aren't at the last pair
-                        } else {
-                            line++; // unpaired or unequal
-                        }
-                    }
-                } else if( action == "UP" ) {
-                    if( line > 0 ) {
-                        if( bp_aiOther[line] == line - 1 && // second of a pair
-                            should_combine_bps( *this, line, bp_aiOther[line] ) ) {
-                            line -= ( line < num_bp - 2 ) ? 2 : 0; // skip a line if we aren't at the first pair
-                        } else {
-                            line--; // unpaired or unequal
-                        }
-                    }
-                } else if( action == "NEXT_TAB" ) {
-                    mvwprintz( w_encumb, 0, 0, c_ltgray, header_spaces.c_str() );
-                    mvwprintz( w_encumb, 0, 13 - utf8_width( title_ENCUMB ) / 2, c_ltgray, title_ENCUMB );
-                    wrefresh( w_encumb );
-                    line = 0;
-                    curtab++;
-                } else if( action == "QUIT" ) {
-                    done = true;
-                }
-                break;
-            }
-            case 4: // Traits tab
-                mvwprintz( w_traits, 0, 0, h_ltgray, header_spaces.c_str() );
-                mvwprintz( w_traits, 0, 13 - utf8_width( title_TRAITS ) / 2, h_ltgray, title_TRAITS );
-                if( line <= ( trait_win_size_y - 1 ) / 2 ) {
-                    min = 0;
-                    max = trait_win_size_y;
-                    if( traitslist.size() < max ) {
-                        max = traitslist.size();
-                    }
-                } else if( line >= traitslist.size() - ( trait_win_size_y + 1 ) / 2 ) {
-                    min = ( traitslist.size() < trait_win_size_y ? 0 : traitslist.size() - trait_win_size_y );
-                    max = traitslist.size();
-                } else {
-                    min = line - ( trait_win_size_y - 1 ) / 2;
-                    max = line + ( trait_win_size_y + 1 ) / 2;
-                    if( traitslist.size() < max ) {
-                        max = traitslist.size();
-                    }
-                }
-
-                for( size_t i = min; i < max; i++ ) {
-                    const auto &mdata = mutation_branch::get( traitslist[i] );
-                    mvwprintz( w_traits, int( 1 + i - min ), 1, c_ltgray, "                         " );
-                    const auto color = mdata.get_display_color();
-                    if( i == line ) {
-                        mvwprintz( w_traits, int( 1 + i - min ), 1, hilite( color ), "%s",
-                                   mdata.name.c_str() );
-                    } else {
-                        mvwprintz( w_traits, int( 1 + i - min ), 1, color, "%s",
-                                   mdata.name.c_str() );
-                    }
-                }
-                if( line < traitslist.size() ) {
-                    const auto &mdata = mutation_branch::get( traitslist[line] );
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta,
-                                    mdata.description );
-                }
-                wrefresh( w_traits );
-                wrefresh( w_info );
-
-                action = ctxt.handle_input();
-                if( action == "DOWN" ) {
-                    if( line < traitslist.size() - 1 ) {
-                        line++;
-                    }
-                    break;
-                } else if( action == "UP" ) {
-                    if( line > 0 ) {
-                        line--;
-                    }
-                } else if( action == "NEXT_TAB" ) {
-                    mvwprintz( w_traits, 0, 0, c_ltgray, header_spaces.c_str() );
-                    mvwprintz( w_traits, 0, 13 - utf8_width( title_TRAITS ) / 2, c_ltgray, title_TRAITS );
-                    for( size_t i = 0; i < traitslist.size() && i < trait_win_size_y; i++ ) {
-                        const auto &mdata = mutation_branch::get( traitslist[i] );
-                        mvwprintz( w_traits, int( i + 1 ), 1, c_black, "                         " );
-                        const auto color = mdata.get_display_color();
-                        mvwprintz( w_traits, int( i + 1 ), 1, color, "%s", mdata.name.c_str() );
-                    }
-                    wrefresh( w_traits );
-                    line = 0;
-                    curtab++;
-                } else if( action == "QUIT" ) {
-                    done = true;
-                }
-                break;
-
-            case 5: // Effects tab
-                mvwprintz( w_effects, 0, 0, h_ltgray, header_spaces.c_str() );
-                mvwprintz( w_effects, 0, 13 - utf8_width( title_EFFECTS ) / 2, h_ltgray, title_EFFECTS );
-                half_y = effect_win_size_y / 2;
-                if( line <= half_y ) {
-                    min = 0;
-                    max = effect_win_size_y;
-                    if( effect_name.size() < max ) {
-                        max = effect_name.size();
-                    }
-                } else if( line >= effect_name.size() - half_y ) {
-                    min = ( effect_name.size() < effect_win_size_y ? 0 : effect_name.size() - effect_win_size_y );
-                    max = effect_name.size();
-                } else {
-                    min = line - half_y;
-                    max = line - half_y + effect_win_size_y;
-                    if( effect_name.size() < max ) {
-                        max = effect_name.size();
-                    }
-                }
-
-                for( size_t i = min; i < max; i++ ) {
-                    if( i == line ) {
-                        mvwprintz( w_effects, int( 1 + i - min ), 0, h_ltgray, "%s", effect_name[i].c_str() );
-                    } else {
-                        mvwprintz( w_effects, int( 1 + i - min ), 0, c_ltgray, "%s", effect_name[i].c_str() );
-                    }
-                }
-                if( line < effect_text.size() ) {
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta, effect_text[line] );
-                }
-                wrefresh( w_effects );
-                wrefresh( w_info );
-
-                action = ctxt.handle_input();
-                if( action == "DOWN" ) {
-                    if( line < effect_name.size() - 1 ) {
-                        line++;
-                    }
-                    break;
-                } else if( action == "UP" ) {
-                    if( line > 0 ) {
-                        line--;
-                    }
-                } else if( action == "NEXT_TAB" ) {
-                    mvwprintz( w_effects, 0, 0, c_ltgray, header_spaces.c_str() );
-                    mvwprintz( w_effects, 0, 13 - utf8_width( title_EFFECTS ) / 2, c_ltgray, title_EFFECTS );
-                    for( size_t i = 0; i < effect_name.size() && i < 7; i++ ) {
-                        mvwprintz( w_effects, int( i + 1 ), 0, c_ltgray, "%s", effect_name[i].c_str() );
-                    }
-                    wrefresh( w_effects );
-                    line = 0;
-                    curtab = 1;
-                } else if( action == "QUIT" ) {
-                    done = true;
-                }
-                break;
-
-            case 3: // Skills tab
-                mvwprintz( w_skills, 0, 0, h_ltgray, header_spaces.c_str() );
-                mvwprintz( w_skills, 0, 13 - utf8_width( title_SKILLS ) / 2, h_ltgray, title_SKILLS );
-                half_y = skill_win_size_y / 2;
-                if( line <= half_y ) {
-                    min = 0;
-                    max = skill_win_size_y;
-                    if( skillslist.size() < max ) {
-                        max = skillslist.size();
-                    }
-                } else if( line >= skillslist.size() - half_y ) {
-                    min = ( skillslist.size() < size_t( skill_win_size_y ) ? 0 : skillslist.size() - skill_win_size_y );
-                    max = skillslist.size();
-                } else {
-                    min = line - half_y;
-                    max = line - half_y + skill_win_size_y;
-                    if( skillslist.size() < max ) {
-                        max = skillslist.size();
-                    }
-                }
-
-                const Skill *selectedSkill = NULL;
-
-                for( size_t i = min; i < max; i++ ) {
-                    const Skill *aSkill = skillslist[i];
-                    SkillLevel level = get_skill_level( aSkill->ident() );
-
-                    const bool can_train = level.can_train();
-                    const bool training = level.isTraining();
-                    const bool rusting = level.isRusting();
-                    const int exercise = level.exercise();
-
-                    nc_color cstatus;
-                    if( i == line ) {
-                        selectedSkill = aSkill;
-                        if( !can_train ) {
-                            cstatus = rusting ? h_ltred : h_white;
-                        } else if( exercise >= 100 ) {
-                            cstatus = training ? h_pink : h_magenta;
-                        } else if( rusting ) {
-                            cstatus = training ? h_ltred : h_red;
-                        } else {
-                            cstatus = training ? h_ltblue : h_blue;
-                        }
-                    } else {
-                        if( rusting ) {
-                            cstatus = training ? c_ltred : c_red;
-                        } else if( !can_train ) {
-                            cstatus = c_white;
-                        } else {
-                            cstatus = training ? c_ltblue : c_blue;
-                        }
-                    }
-                    mvwprintz( w_skills, int( 1 + i - min ), 1, c_ltgray, "                         " );
-                    mvwprintz( w_skills, int( 1 + i - min ), 1, cstatus, "%s:", aSkill->name().c_str() );
-                    mvwprintz( w_skills, int( 1 + i - min ), 19, cstatus, "%-2d(%2d%%)", ( int )level,
-                               ( exercise <  0 ? 0 : exercise ) );
-                }
-
-                draw_scrollbar( w_skills, line, skill_win_size_y, int( skillslist.size() ), 1 );
-                wrefresh( w_skills );
-
-                werase( w_info );
-
-                if( line < skillslist.size() ) {
-                    fold_and_print( w_info, 0, 1, FULL_SCREEN_WIDTH - 2, c_magenta, selectedSkill->description() );
-                }
-                wrefresh( w_info );
-
-                action = ctxt.handle_input();
-                if( action == "DOWN" ) {
-                    if( size_t( line ) < skillslist.size() - 1 ) {
-                        line++;
-                    }
-                } else if( action == "UP" ) {
-                    if( line > 0 ) {
-                        line--;
-                    }
-                } else if( action == "NEXT_TAB" ) {
-                    werase( w_skills );
-                    mvwprintz( w_skills, 0, 0, c_ltgray, header_spaces.c_str() );
-                    mvwprintz( w_skills, 0, 13 - utf8_width( title_SKILLS ) / 2, c_ltgray, title_SKILLS );
-                    for( size_t i = 0; i < skillslist.size() && i < size_t( skill_win_size_y ); i++ ) {
-                        const Skill *thisSkill = skillslist[i];
-                        SkillLevel level = get_skill_level( thisSkill->ident() );
-                        bool can_train = level.can_train();
-                        bool isLearning = level.isTraining();
-                        bool rusting = level.isRusting();
-
-                        nc_color cstatus;
-                        if( rusting ) {
-                            cstatus = isLearning ? c_ltred : c_red;
-                        } else if( !can_train ) {
-                            cstatus = c_white;
-                        } else {
-                            cstatus = isLearning ? c_ltblue : c_blue;
-                        }
-
-                        mvwprintz( w_skills, i + 1,  1, cstatus, "%s:", thisSkill->name().c_str() );
-                        mvwprintz( w_skills, i + 1, 19, cstatus, "%-2d(%2d%%)", ( int )level,
-                                   ( level.exercise() <  0 ? 0 : level.exercise() ) );
-                    }
-                    wrefresh( w_skills );
-                    line = 0;
-                    curtab++;
-                } else if( action == "CONFIRM" ) {
-                    get_skill_level( selectedSkill->ident() ).toggleTraining();
-                } else if( action == "QUIT" ) {
-                    done = true;
-                }
-        }
-    } while( !done );
-
-    werase( w_info );
-    werase( w_tip );
-    werase( w_stats );
-    werase( w_encumb );
-    werase( w_traits );
-    werase( w_effects );
-    werase( w_skills );
-    werase( w_speed );
-    werase( w_info );
-    werase( w_grid_top );
-    werase( w_grid_effect );
-    werase( w_grid_skill );
-    werase( w_grid_trait );
-
-    delwin( w_info );
-    delwin( w_tip );
-    delwin( w_stats );
-    delwin( w_encumb );
-    delwin( w_traits );
-    delwin( w_effects );
-    delwin( w_skills );
-    delwin( w_speed );
-    delwin( w_grid_top );
-    delwin( w_grid_effect );
-    delwin( w_grid_skill );
-    delwin( w_grid_trait );
-
-    g->refresh_all();
 }
 
 void player::disp_morale()
@@ -4125,9 +3077,9 @@ bool player::has_two_arms() const
 
 bool player::avoid_trap( const tripoint &pos, const trap &tr ) const
 {
-    ///\EFFECT_DEX increases chance to avoid traps
+    /** @EFFECT_DEX increases chance to avoid traps */
 
-    ///\EFFECT_DODGE increases chance to avoid traps
+    /** @EFFECT_DODGE increases chance to avoid traps */
     int myroll = dice( 3, dex_cur + get_skill_level( skill_dodge ) * 1.5 );
     int traproll;
     if( tr.can_see( pos, *this ) ) {
@@ -4145,12 +3097,6 @@ bool player::avoid_trap( const tripoint &pos, const trap &tr ) const
     }
 
     return myroll >= traproll;
-}
-
-body_part player::get_random_body_part( bool main ) const
-{
-    // TODO: Refuse broken limbs, adjust for mutations
-    return random_body_part( main );
 }
 
 bool player::has_alarm_clock() const
@@ -4178,28 +3124,29 @@ bool player::has_watch() const
 void player::pause()
 {
     moves = 0;
-    ///\EFFECT_STR increases recoil recovery speed
+    /** @EFFECT_STR increases recoil recovery speed */
 
-    ///\EFFECT_GUN increases recoil recovery speed
+    /** @EFFECT_GUN increases recoil recovery speed */
     recoil -= str_cur + 2 * get_skill_level( skill_gun );
     recoil = std::max( MIN_RECOIL * 2, recoil );
     recoil = recoil / 2;
 
     // Train swimming if underwater
-    if( underwater ) {
-        practice( skill_swimming, 1 );
-        drench( 100, mfb( bp_leg_l ) | mfb( bp_leg_r ) | mfb( bp_torso ) | mfb( bp_arm_l ) | mfb(
-                    bp_arm_r ) |
-                mfb( bp_head ) | mfb( bp_eyes ) | mfb( bp_mouth ) | mfb( bp_foot_l ) | mfb( bp_foot_r ) |
-                mfb( bp_hand_l ) | mfb( bp_hand_r ), true );
-    } else if( g->m.has_flag( TFLAG_DEEP_WATER, pos() ) ) {
-        practice( skill_swimming, 1 );
-        // Same as above, except no head/eyes/mouth
-        drench( 100, mfb( bp_leg_l ) | mfb( bp_leg_r ) | mfb( bp_torso ) | mfb( bp_arm_l ) | mfb(
-                    bp_arm_r ) |
-                mfb( bp_foot_l ) | mfb( bp_foot_r ) | mfb( bp_hand_l ) | mfb( bp_hand_r ), true );
-    } else if( g->m.has_flag( "SWIMMABLE", pos() ) ) {
-        drench( 40, mfb( bp_foot_l ) | mfb( bp_foot_r ) | mfb( bp_leg_l ) | mfb( bp_leg_r ), false );
+    if( !in_vehicle ) {
+        if( underwater ) {
+            practice( skill_swimming, 1 );
+            drench( 100, mfb( bp_leg_l ) | mfb( bp_leg_r ) | mfb( bp_torso ) | mfb( bp_arm_l ) |
+                         mfb( bp_arm_r ) | mfb( bp_head ) | mfb( bp_eyes ) | mfb( bp_mouth ) |
+                         mfb( bp_foot_l ) | mfb( bp_foot_r ) | mfb( bp_hand_l ) | mfb( bp_hand_r ), true );
+        } else if( g->m.has_flag( TFLAG_DEEP_WATER, pos() ) ) {
+            practice( skill_swimming, 1 );
+            // Same as above, except no head/eyes/mouth
+            drench( 100, mfb( bp_leg_l ) | mfb( bp_leg_r ) | mfb( bp_torso ) | mfb( bp_arm_l ) |
+                         mfb( bp_arm_r ) | mfb( bp_foot_l ) | mfb( bp_foot_r ) | mfb( bp_hand_l ) |
+                         mfb( bp_hand_r ), true );
+        } else if( g->m.has_flag( "SWIMMABLE", pos() ) ) {
+            drench( 40, mfb( bp_foot_l ) | mfb( bp_foot_r ) | mfb( bp_leg_l ) | mfb( bp_leg_r ), false );
+        }
     }
 
     // Try to put out clothing/hair fire
@@ -4289,7 +3236,7 @@ void player::shout( std::string msg )
     // Masks and such dampen the sound
     // Balanced around  whisper for wearing bondage mask
     // and noise ~= 10(door smashing) for wearing dust mask for character with strength = 8
-    ///\EFFECT_STR increases shouting volume
+    /** @EFFECT_STR increases shouting volume */
     const int penalty = encumb( bp_mouth ) * 3 / 2;
     int noise = base + str_cur * shout_multiplier - penalty;
 
@@ -4377,33 +3324,11 @@ void player::search_surroundings()
     }
 }
 
-int player::throw_dex_mod(bool return_stat_effect) const
-{
-  // Stat window shows stat effects on based on current stat
- int dex = get_dex();
- if (dex == 8 || dex == 9)
-  return 0;
- ///\EFFECT_DEX increases throwing bonus
- if (dex >= 10)
-  return (return_stat_effect ? 0 - rng(0, dex - 9) : 9 - dex);
-
- int deviation = 0;
- if (dex < 4)
-  deviation = 4 * (8 - dex);
- else if (dex < 6)
-  deviation = 3 * (8 - dex);
- else
-  deviation = 2 * (8 - dex);
-
- // return_stat_effect actually matters here
- return (return_stat_effect ? rng(0, deviation) : deviation);
-}
-
 int player::read_speed(bool return_stat_effect) const
 {
     // Stat window shows stat effects on based on current stat
     const int intel = get_int();
-    ///\EFFECT_INT increases reading speed
+    /** @EFFECT_INT increases reading speed */
     int ret = 1000 - 50 * (intel - 8);
     if( has_trait("FASTREADER") ) {
         ret *= .8;
@@ -4428,7 +3353,7 @@ int player::rust_rate(bool return_stat_effect) const
 
     // Stat window shows stat effects on based on current stat
     int intel = get_int();
-    ///\EFFECT_INT reduces skill rust
+    /** @EFFECT_INT reduces skill rust */
     int ret = ((get_option<std::string>( "SKILL_RUST" ) == "vanilla" || get_option<std::string>( "SKILL_RUST" ) == "capped") ? 500 : 500 - 35 * (intel - 8));
 
     if (has_trait("FORGETFUL")) {
@@ -4449,11 +3374,11 @@ int player::rust_rate(bool return_stat_effect) const
 
 int player::talk_skill() const
 {
-    ///\EFFECT_INT slightly increases talking skill
+    /** @EFFECT_INT slightly increases talking skill */
 
-    ///\EFFECT_PER slightly increases talking skill
+    /** @EFFECT_PER slightly increases talking skill */
 
-    ///\EFFECT_SPEECH increases talking skill
+    /** @EFFECT_SPEECH increases talking skill */
     int ret = get_int() + get_per() + get_skill_level( skill_id( "speech" ) ) * 3;
     if (has_trait("SAPIOVORE")) {
         ret -= 20; // Friendly convo with your prey? unlikely
@@ -4479,7 +3404,7 @@ int player::talk_skill() const
 
 int player::intimidation() const
 {
-    ///\EFFECT_STR increases intimidation factor
+    /** @EFFECT_STR increases intimidation factor */
     int ret = get_str() * 2;
     if (weapon.is_gun()) {
         ret += 10;
@@ -4658,51 +3583,54 @@ bool player::immune_to( body_part bp, damage_unit dam ) const
     return dam.amount <= 0;
 }
 
-dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const damage_instance& d)
+dealt_damage_instance player::deal_damage( Creature* source, body_part bp,
+                                           const damage_instance& d )
 {
     if( has_trait( "DEBUG_NODMG" ) ) {
         return dealt_damage_instance();
     }
 
-    dealt_damage_instance dealt_dams = Creature::deal_damage(source, bp, d); //damage applied here
-    int dam = dealt_dams.total_damage(); //block reduction should be by applied this point
+    //damage applied here
+    dealt_damage_instance dealt_dams = Creature::deal_damage( source, bp, d );
+    //block reduction should be by applied this point
+    int dam = dealt_dams.total_damage();
 
     // TODO: Pre or post blit hit tile onto "this"'s location here
-    if(g->u.sees( pos() )) {
-        g->draw_hit_player(*this, dam);
+    if( g->u.sees( pos() ) ) {
+        g->draw_hit_player( *this, dam );
 
-        if (dam > 0 && is_player() && source) {
+        if( dam > 0 && is_player() && source ) {
             //monster hits player melee
-            SCT.add(posx(), posy(),
-                    direction_from(0, 0, posx() - source->posx(), posy() - source->posy()),
-                    get_hp_bar(dam, get_hp_max(player::bp_to_hp(bp))).first, m_bad,
-                    body_part_name(bp), m_neutral);
+            SCT.add( posx(), posy(),
+                     direction_from( 0, 0, posx() - source->posx(), posy() - source->posy() ),
+                     get_hp_bar( dam, get_hp_max( player::bp_to_hp( bp ) ) ).first, m_bad,
+                     body_part_name( bp ), m_neutral );
         }
     }
 
     // handle snake artifacts
-    if (has_artifact_with(AEP_SNAKES) && dam >= 6) {
+    if( has_artifact_with( AEP_SNAKES ) && dam >= 6 ) {
         int snakes = dam / 6;
         std::vector<tripoint> valid;
-        for (int x = posx() - 1; x <= posx() + 1; x++) {
-            for (int y = posy() - 1; y <= posy() + 1; y++) {
-                tripoint dest(x, y, posz());
-                if (g->is_empty( dest )) {
+        for( int x = posx() - 1; x <= posx() + 1; x++ ) {
+            for( int y = posy() - 1; y <= posy() + 1; y++ ) {
+                tripoint dest( x, y, posz() );
+                if( g->is_empty( dest ) ) {
                     valid.push_back( dest );
                 }
             }
         }
-        if (snakes > int(valid.size())) {
-            snakes = int(valid.size());
+        if( snakes > int( valid.size() ) ) {
+            snakes = int( valid.size() );
         }
-        if (snakes == 1) {
-            add_msg(m_warning, _("A snake sprouts from your body!"));
-        } else if (snakes >= 2) {
-            add_msg(m_warning, _("Some snakes sprout from your body!"));
+        if( snakes == 1 ) {
+            add_msg( m_warning, _( "A snake sprouts from your body!" ) );
+        } else if( snakes >= 2 ) {
+            add_msg( m_warning, _( "Some snakes sprout from your body!" ) );
         }
-        for (int i = 0; i < snakes && !valid.empty(); i++) {
+        for( int i = 0; i < snakes && !valid.empty(); i++ ) {
             const tripoint target = random_entry_removed( valid );
-            if (g->summon_mon(mon_shadow_snake, target)) {
+            if( g->summon_mon( mon_shadow_snake, target ) ) {
                 monster *snake = g->monster_at( target );
                 snake->friendly = -1;
             }
@@ -4710,21 +3638,21 @@ dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const 
     }
 
     // And slimespawners too
-    if ((has_trait("SLIMESPAWNER")) && (dam >= 10) && one_in(20 - dam)) {
+    if( ( has_trait( "SLIMESPAWNER" ) ) && ( dam >= 10 ) && one_in( 20 - dam ) ) {
         std::vector<tripoint> valid;
-        for (int x = posx() - 1; x <= posx() + 1; x++) {
-            for (int y = posy() - 1; y <= posy() + 1; y++) {
-                tripoint dest(x, y, posz());
-                if (g->is_empty(dest)) {
+        for( int x = posx() - 1; x <= posx() + 1; x++ ) {
+            for( int y = posy() - 1; y <= posy() + 1; y++ ) {
+                tripoint dest( x, y, posz() );
+                if( g->is_empty( dest ) ) {
                     valid.push_back( dest );
                 }
             }
         }
-        add_msg(m_warning, _("Slime is torn from you, and moves on its own!"));
+        add_msg( m_warning, _( "Slime is torn from you, and moves on its own!" ) );
         int numslime = 1;
-        for (int i = 0; i < numslime && !valid.empty(); i++) {
+        for( int i = 0; i < numslime && !valid.empty(); i++ ) {
             const tripoint target = random_entry_removed( valid );
-            if (g->summon_mon(mon_player_blob, target)) {
+            if( g->summon_mon( mon_player_blob, target ) ) {
                 monster *slime = g->monster_at( target );
                 slime->friendly = -1;
             }
@@ -4732,39 +3660,38 @@ dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const 
     }
 
     //Acid blood effects.
-    bool u_see = g->u.sees(*this);
-    int cut_dam = dealt_dams.type_damage(DT_CUT);
-    if( source && has_trait("ACIDBLOOD") && !one_in(3) &&
-        (dam >= 4 || cut_dam > 0) && (rl_dist(g->u.pos(), source->pos()) <= 1)) {
-        if (is_player()) {
-            add_msg(m_good, _("Your acidic blood splashes %s in mid-attack!"),
-                            source->disp_name().c_str());
-        } else if (u_see) {
-            add_msg(_("%1$s's acidic blood splashes on %2$s in mid-attack!"),
-                        disp_name().c_str(),
-                        source->disp_name().c_str());
+    bool u_see = g->u.sees( *this );
+    int cut_dam = dealt_dams.type_damage( DT_CUT );
+    if( source && has_trait( "ACIDBLOOD" ) && !one_in( 3 ) &&
+        ( dam >= 4 || cut_dam > 0 ) && ( rl_dist( g->u.pos(), source->pos() ) <= 1) ) {
+        if( is_player() ) {
+            add_msg( m_good, _( "Your acidic blood splashes %s in mid-attack!" ),
+                     source->disp_name().c_str() );
+        } else if( u_see ) {
+            add_msg( _( "%1$s's acidic blood splashes on %2$s in mid-attack!" ),
+                     disp_name().c_str(), source->disp_name().c_str() );
         }
         damage_instance acidblood_damage;
-        acidblood_damage.add_damage(DT_ACID, rng(4,16));
-        if (!one_in(4)) {
-            source->deal_damage(this, bp_arm_l, acidblood_damage);
-            source->deal_damage(this, bp_arm_r, acidblood_damage);
+        acidblood_damage.add_damage( DT_ACID, rng( 4, 16 ) );
+        if( !one_in( 4 ) ) {
+            source->deal_damage( this, bp_arm_l, acidblood_damage );
+            source->deal_damage( this, bp_arm_r, acidblood_damage );
         } else {
-            source->deal_damage(this, bp_torso, acidblood_damage);
-            source->deal_damage(this, bp_head, acidblood_damage);
+            source->deal_damage( this, bp_torso, acidblood_damage );
+            source->deal_damage( this, bp_head, acidblood_damage );
         }
     }
 
     int recoil_mul = 100;
     switch( bp ) {
         case bp_eyes:
-            if (dam > 5 || cut_dam > 0) {
-                int minblind = (dam + cut_dam) / 10;
-                if (minblind < 1) {
+            if( dam > 5 || cut_dam > 0 ) {
+                int minblind = ( dam + cut_dam ) / 10;
+                if( minblind < 1 ) {
                     minblind = 1;
                 }
-                int maxblind = (dam + cut_dam) /  4;
-                if (maxblind > 5) {
+                int maxblind = ( dam + cut_dam ) /  4;
+                if( maxblind > 5 ) {
                     maxblind = 5;
                 }
                 add_effect( effect_blind, rng( minblind, maxblind ) );
@@ -4792,7 +3719,7 @@ dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const 
             // @todo Some daze maybe? Move drain?
             break;
         default:
-            debugmsg("Wacky body part hit!");
+            debugmsg( "Wacky body part hit!" );
     }
 
     // @todo Scale with damage in a way that makes sense for power armors, plate armor and naked skin.
@@ -4800,19 +3727,20 @@ dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const 
     //looks like this should be based off of dealtdams, not d as d has no damage reduction applied.
     // Skip all this if the damage isn't from a creature. e.g. an explosion.
     if( source != nullptr ) {
-        if ( source->has_flag(MF_GRABS) && !source->is_hallucination() ) {
-            ///\EFFECT_DEX increases chance to avoid being grabbed, if DEX>STR
+        if ( source->has_flag( MF_GRABS ) && !source->is_hallucination() ) {
+            /** @EFFECT_DEX increases chance to avoid being grabbed, if DEX>STR */
 
-            ///\EFFECT_STR increases chance to avoid being grabbed, if STR>DEX
+            /** @EFFECT_STR increases chance to avoid being grabbed, if STR>DEX */
             if( has_grab_break_tec() && get_grab_resist() > 0 &&
-                (get_dex() > get_str() ? rng( 0, get_dex() ) : rng( 0, get_str() ) ) > rng( 0, 10 ) ) {
+                ( get_dex() > get_str() ? rng( 0, get_dex() ) : rng( 0, get_str() ) ) >
+                    rng( 0, 10 ) ) {
                 if( has_effect( effect_grabbed ) ) {
                     add_msg_if_player( m_warning ,_("You are being grabbed by %s, but you bat it away!"),
-                                       source->disp_name().c_str());
+                                       source->disp_name().c_str() );
                 } else {
                     add_msg_player_or_npc( m_info, _("You are being grabbed by %s, but you break its grab!"),
                                            _("<npcname> are being grabbed by %s, but they break its grab!"),
-                                           source->disp_name().c_str());
+                                           source->disp_name().c_str() );
                 }
             } else {
                 int prev_effect = get_effect_int( effect_grabbed );
@@ -4821,6 +3749,32 @@ dealt_damage_instance player::deal_damage(Creature* source, body_part bp, const 
                                 source->disp_name().c_str());
             }
         }
+    }
+
+    if( get_world_option<bool>( "FILTHY_WOUNDS" ) ) {
+        int sum_cover = 0;
+        for( const item &i : worn ) {
+            if( i.covers( bp ) && i.is_filthy() ) {
+                sum_cover += i.get_coverage();
+            }
+        }
+
+        // Chance of infection is damage (with cut and stab x4) * sum of coverage on affected body part, in percent.
+        // i.e. if the body part has a sum of 100 coverage from filthy clothing,
+        // each point of damage has a 1% change of causing infection.
+        const int cut_type_dam = dealt_dams.type_damage( DT_CUT ) + dealt_dams.type_damage( DT_STAB );
+        const int combined_dam = dealt_dams.type_damage( DT_BASH ) + ( cut_type_dam * 4 );
+        const int infection_chance = ( combined_dam * sum_cover ) / 100;
+        if( x_in_y( infection_chance, 100 ) ) {
+            if( has_effect( effect_bite, bp ) ) {
+                add_effect( effect_bite, 400, bp, true );
+            } else if( has_effect( effect_infected, bp ) ) {
+                add_effect( effect_infected, 250, bp, true );
+            } else {
+                add_effect( effect_bite, 1, bp, true );
+            }
+            add_msg_if_player( "Filth from your clothing has implanted deep in the wound." );
+        } 
     }
 
     on_hurt( source );
@@ -4941,6 +3895,11 @@ void player::apply_damage(Creature *source, body_part hurt, int dam)
         hp_cur[hurtpart] = 0;
     }
 
+    if( hp_cur[hurtpart] <= 0 ) {
+        remove_effect( effect_mending, hurt );
+        add_effect( effect_disabled, 1, hurt, true );
+    }
+
     lifetime_stats()->damage_taken += dam;
     if( dam > get_painkiller() ) {
         on_hurt( source );
@@ -5049,9 +4008,9 @@ float player::fall_damage_mod() const
     float ret = 1.0f;
 
     // Ability to land properly is 2x as important as dexterity itself
-    ///\EFFECT_DEX decreases damage from falling
+    /** @EFFECT_DEX decreases damage from falling */
 
-    ///\EFFECT_DODGE decreases damage from falling
+    /** @EFFECT_DODGE decreases damage from falling */
     float dex_dodge = dex_cur / 2 + get_skill_level( skill_dodge );
     // Penalize for wearing heavy stuff
     dex_dodge -= ( ( ( encumb(bp_leg_l) + encumb(bp_leg_r) ) / 2 ) + ( encumb(bp_torso) / 1 ) ) / 10;
@@ -5206,7 +4165,7 @@ void player::knock_back_from( const tripoint &p )
         monster *critter = &(g->zombie(mondex));
         deal_damage( critter, bp_torso, damage_instance( DT_BASH, critter->type->size ) );
         add_effect( effect_stunned, 1 );
-        ///\EFFECT_STR_MAX allows knocked back player to knock back, damage, stun some monsters
+        /** @EFFECT_STR_MAX allows knocked back player to knock back, damage, stun some monsters */
         if ((str_max - 6) / 4 > critter->type->size) {
             critter->knock_back_from(pos()); // Chain reaction!
             critter->apply_damage( this, bp_torso, (str_max - 6) / 4);
@@ -5252,52 +4211,6 @@ void player::knock_back_from( const tripoint &p )
     }
 }
 
-hp_part player::bp_to_hp( const body_part bp )
-{
-    switch(bp) {
-        case bp_head:
-        case bp_eyes:
-        case bp_mouth:
-            return hp_head;
-        case bp_torso:
-            return hp_torso;
-        case bp_arm_l:
-        case bp_hand_l:
-            return hp_arm_l;
-        case bp_arm_r:
-        case bp_hand_r:
-            return hp_arm_r;
-        case bp_leg_l:
-        case bp_foot_l:
-            return hp_leg_l;
-        case bp_leg_r:
-        case bp_foot_r:
-            return hp_leg_r;
-        default:
-            return num_hp_parts;
-    }
-}
-
-body_part player::hp_to_bp( const hp_part hpart )
-{
-    switch(hpart) {
-        case hp_head:
-            return bp_head;
-        case hp_torso:
-            return bp_torso;
-        case hp_arm_l:
-            return bp_arm_l;
-        case hp_arm_r:
-            return bp_arm_r;
-        case hp_leg_l:
-            return bp_leg_l;
-        case hp_leg_r:
-            return bp_leg_r;
-        default:
-            return num_bp;
-    }
-}
-
 int player::hp_percentage() const
 {
     int total_cur = 0, total_max = 0;
@@ -5333,12 +4246,13 @@ void player::update_body( int from, int to )
         check_needs_extremes();
         update_needs( five_mins );
         regen( five_mins );
+        // Note: mend ticks once per 5 mins, but wants rate in TURNS, not 5 min intervals
+        mend( five_mins * MINUTES( 5 ) );
     }
 
     const int thirty_mins = ticks_between( from, to, MINUTES(30) );
     if( thirty_mins > 0 ) {
         get_sick();
-        mend( thirty_mins );
     }
 
     for( const auto& v : vitamin::all() ) {
@@ -5536,7 +4450,7 @@ void player::check_needs_extremes()
                 add_msg_if_player( m_warning, _("You're too tired to stop yawning.") );
                 add_effect( effect_lack_sleep, MINUTES(30) + 1 );
             }
-            ///\EFFECT_INT slightly decreases occurrence of short naps when dead tired
+            /** @EFFECT_INT slightly decreases occurrence of short naps when dead tired */
             if( one_in(50 + int_cur) ) {
                 // Rivet's idea: look out for microsleeps!
                 fall_asleep(5);
@@ -5546,7 +4460,7 @@ void player::check_needs_extremes()
                 add_msg_if_player( m_warning, _("How much longer until bedtime?") );
                 add_effect( effect_lack_sleep, MINUTES( 30 ) + 1 );
             }
-            ///\EFFECT_INT slightly decreases occurrence of short naps when exhausted
+            /** @EFFECT_INT slightly decreases occurrence of short naps when exhausted */
             if (one_in(100 + int_cur)) {
                 fall_asleep(5);
             }
@@ -5573,20 +4487,9 @@ void player::update_needs( int rate_multiplier )
     float hunger_rate = metabolic_rate();
     add_msg_if_player( m_debug, "Metabolic rate: %.2f", hunger_rate );
 
-    float thirst_rate = 1.0f;
-    if( has_trait("PLANTSKIN") ) {
-        thirst_rate -= 0.2f;
-    }
+    float thirst_rate = 1.0f + mutation_value( "thirst_modifier" );
     if( is_wearing("stillsuit") ) {
         thirst_rate -= 0.3f;
-    }
-
-    if( has_trait("THIRST") ) {
-        thirst_rate += 0.5f;
-    } else if( has_trait("THIRST2") ) {
-        thirst_rate += 1.0f;
-    } else if( has_trait("THIRST3") ) {
-        thirst_rate += 2.0f;
     }
 
     // Note: intentionally not in metabolic rate
@@ -5622,31 +4525,7 @@ void player::update_needs( int rate_multiplier )
     const bool wasnt_fatigued = get_fatigue() <= DEAD_TIRED;
     // Don't increase fatigue if sleeping or trying to sleep or if we're at the cap.
     if( get_fatigue() < 1050 && !asleep && !debug_ls ) {
-        float fatigue_rate = 1.0f;
-        // Wakeful folks don't always gain fatigue!
-        if( has_trait("WAKEFUL") ) {
-            fatigue_rate -= (1.0f / 6.0f);
-        } else if( has_trait("WAKEFUL2") ) {
-            fatigue_rate -= 0.25f;
-        } else if( has_trait("WAKEFUL3") ) {
-            // You're looking at over 24 hours to hit Tired here
-            fatigue_rate -= 0.5f;
-        }
-        // Sleepy folks gain fatigue faster; Very Sleepy is twice as fast as typical
-        if( has_trait("SLEEPY") ) {
-            fatigue_rate += (1.0f / 3.0f);
-        } else if( has_trait("SLEEPY2") ) {
-            fatigue_rate += 1.0f;
-        }
-
-        if( has_trait("MET_RAT") ) {
-            fatigue_rate += 0.5f;
-        }
-
-        // Freakishly Huge folks tire quicker
-        if( has_trait("HUGE") ) {
-            fatigue_rate += (1.0f / 6.0f);
-        }
+        float fatigue_rate = 1.0f + mutation_value( "fatigue_modifier" );
 
         if( !debug_ls && fatigue_rate > 0.0f ) {
             mod_fatigue( divide_roll_remainder( fatigue_rate * rate_multiplier, 1.0 ) );
@@ -5655,24 +4534,14 @@ void player::update_needs( int rate_multiplier )
             }
         }
     } else if( asleep ) {
-        const int intense = sleep.is_null() ? 0 : sleep.get_intensity();
-        // Accelerated recovery capped to 2x over 2 hours
-        // After 16 hours of activity, equal to 7.25 hours of rest
-        const int accelerated_recovery_chance = 24 - intense + 1;
-        const float accelerated_recovery_rate = 1.0f / accelerated_recovery_chance;
-        float recovery_rate = 1.0f + accelerated_recovery_rate;
-
-        // You fatigue & recover faster with Sleepy
-        // Very Sleepy, you just fatigue faster
-        if( !hibernating && ( has_trait("SLEEPY") || has_trait("MET_RAT") ) ) {
-            recovery_rate += (1.0f + accelerated_recovery_rate) / 2.0f;
-        }
-
-        // Tireless folks recover fatigue really fast
-        // as well as gaining it really slowly
-        // (Doesn't speed healing any, though...)
-        if( !hibernating && has_trait("WAKEFUL3") ) {
-            recovery_rate += (1.0f + accelerated_recovery_rate) / 2.0f;
+        float recovery_rate = 1.0f + mutation_value( "fatigue_regen_modifier" );
+        if( !hibernating ) {
+            const int intense = sleep.is_null() ? 0 : sleep.get_intensity();
+            // Accelerated recovery capped to 2x over 2 hours
+            // After 16 hours of activity, equal to 7.25 hours of rest
+            const int accelerated_recovery_chance = 24 - intense + 1;
+            const float accelerated_recovery_rate = 1.0f / accelerated_recovery_chance;
+            recovery_rate += accelerated_recovery_rate;
         }
 
         // Untreated pain causes a flat penalty to fatigue reduction
@@ -5735,49 +4604,12 @@ void player::regen( int rate_multiplier )
         mod_pain( -roll_remainder( 0.2f + get_pain() / 50.0f ) );
     }
 
-    const bool asleep = has_effect( effect_sleep );
-    float heal_rate = 0.0f;
-    if( asleep ) {
-        if( has_trait( "REGEN" ) || has_trait( "FASTHEALER2" ) ) {
-            heal_rate += 1.0f;
-        } else if( has_trait( "FASTHEALER" ) || has_trait( "MET_RAT" ) ) {
-            heal_rate += 0.5f;
-        } else if( has_trait( "SLOWHEALER" ) || has_trait( "ROT1" ) ) {
-            heal_rate += 0.13f;
-        } else {
-            heal_rate += 0.25f;
-        }
-
-        heal_rate += heal_rate * get_healthy() / 200.0f;
-    }
-
-    if( has_trait("ROT3") ) {
-        heal_rate -= 0.1f;
-    } else if( has_trait("ROT2") ) {
-        heal_rate -= 0.04f;
-    } else if( has_trait( "REGEN" ) ) {
-        heal_rate += 1.0f;
-    } else if( has_trait( "FASTHEALER2" ) ) {
-        heal_rate += 0.33f;
-    } else if( has_trait( "FASTHEALER" ) || has_trait( "MET_RAT" ) ) {
-        heal_rate += 0.1f;
-    }
-
-    // Let flimsy affect rot too - otherwise it would be a really horrible combo
-    if( heal_rate != 0.0f ) {
-        if( has_trait("FLIMSY3") ) {
-            heal_rate /= 4.0f;
-        } else if( has_trait("FLIMSY2") ) {
-            heal_rate /= 2.0f;
-        } else if( has_trait("FLIMSY") ) {
-            heal_rate /= 1.33f;
-        }
-    }
-
+    float rest = rest_quality();
+    float heal_rate = healing_rate( rest ) * MINUTES(5);
     if( heal_rate > 0.0f ) {
         healall( roll_remainder( rate_multiplier * heal_rate ) );
-    } else if( !asleep && heal_rate < 0.0f ) {
-        int rot_rate = roll_remainder( rate_multiplier * heal_rate );
+    } else if( heal_rate < 0.0f ) {
+        int rot_rate = roll_remainder( rate_multiplier * -heal_rate );
         // Has to be in loop because some effects depend on rounding
         while( rot_rate-- > 0 ) {
             hurtall( 1, nullptr, false );
@@ -6359,1234 +5191,6 @@ void player::process_effects() {
     Creature::process_effects();
 }
 
-void player::hardcoded_effects(effect &it)
-{
-    if( auto buff = ma_buff::from_effect( it ) ) {
-        if( buff->is_valid_player( *this ) ) {
-            buff->apply_player( *this );
-        } else {
-            it.set_duration( 0 ); // removes the effect
-        }
-        return;
-    }
-    const efftype_id &id = it.get_id();
-    int start = it.get_start_turn();
-    int dur = it.get_duration();
-    int intense = it.get_intensity();
-    body_part bp = it.get_bp();
-    bool sleeping = has_effect( effect_sleep );
-    bool msg_trig = one_in(400);
-    if( id == effect_onfire ) {
-        deal_damage( nullptr, bp, damage_instance( DT_HEAT, rng( intense, intense * 2 ) ) );
-    } else if( id == effect_spores ) {
-        // Equivalent to X in 150000 + health * 100
-        if ((!has_trait("M_IMMUNE")) && (one_in(100) && x_in_y(intense, 150 + get_healthy() / 10)) ) {
-            add_effect( effect_fungus, 1, num_bp, true );
-        }
-    } else if( id == effect_fungus ) {
-        int bonus = get_healthy() / 10 + (resists_effect(it) ? 100 : 0);
-        switch (intense) {
-        case 1: // First hour symptoms
-            if (one_in(160 + bonus)) {
-                cough(true);
-            }
-            if (one_in(100 + bonus)) {
-                add_msg_if_player(m_warning, _("You feel nauseous."));
-            }
-            if (one_in(100 + bonus)) {
-                add_msg_if_player(m_warning, _("You smell and taste mushrooms."));
-            }
-            it.mod_duration(1);
-            if (dur > 600) {
-                it.mod_intensity(1);
-            }
-            break;
-        case 2: // Five hours of worse symptoms
-            if (one_in(600 + bonus * 3)) {
-                add_msg_if_player(m_bad,  _("You spasm suddenly!"));
-                moves -= 100;
-                apply_damage( nullptr, bp_torso, 5 );
-            }
-            if (x_in_y(vomit_mod(), (800 + bonus * 4)) || one_in(2000 + bonus * 10)) {
-                add_msg_player_or_npc(m_bad, _("You vomit a thick, gray goop."),
-                                               _("<npcname> vomits a thick, gray goop.") );
-
-                int awfulness = rng(0,70);
-                moves = -200;
-                mod_hunger(awfulness);
-                mod_thirst(awfulness);
-                ///\EFFECT_STR decreases damage taken by fungus effect
-                apply_damage( nullptr, bp_torso, awfulness / std::max( str_cur, 1 ) ); // can't be healthy
-            }
-            it.mod_duration(1);
-            if (dur > 3600) {
-                it.mod_intensity(1);
-            }
-            break;
-        case 3: // Permanent symptoms
-            if (one_in(1000 + bonus * 8)) {
-                add_msg_player_or_npc(m_bad,  _("You vomit thousands of live spores!"),
-                                              _("<npcname> vomits thousands of live spores!") );
-
-                moves = -500;
-                for (int i = -1; i <= 1; i++) {
-                    for (int j = -1; j <= 1; j++) {
-                        if (i == 0 && j == 0) {
-                            continue;
-                        }
-
-                        tripoint sporep( posx() + i, posy() + j, posz() );
-                        g->m.fungalize( sporep, this, 0.25 );
-                    }
-                }
-            // We're fucked
-            } else if (one_in(6000 + bonus * 20)) {
-                if(hp_cur[hp_arm_l] <= 0 || hp_cur[hp_arm_r] <= 0) {
-                    if(hp_cur[hp_arm_l] <= 0 && hp_cur[hp_arm_r] <= 0) {
-                        add_msg_player_or_npc(m_bad, _("The flesh on your broken arms bulges. Fungus stalks burst through!"),
-                        _("<npcname>'s broken arms bulge. Fungus stalks burst out of the bulges!"));
-                    } else {
-                        add_msg_player_or_npc(m_bad, _("The flesh on your broken and unbroken arms bulge. Fungus stalks burst through!"),
-                        _("<npcname>'s arms bulge. Fungus stalks burst out of the bulges!"));
-                    }
-                } else {
-                    add_msg_player_or_npc(m_bad, _("Your hands bulge. Fungus stalks burst through the bulge!"),
-                        _("<npcname>'s hands bulge. Fungus stalks burst through the bulge!"));
-                }
-                apply_damage( nullptr, bp_arm_l, 999 );
-                apply_damage( nullptr, bp_arm_r, 999 );
-            }
-            break;
-        }
-    } else if( id == effect_rat ) {
-        it.set_intensity(dur / 10);
-        if (rng(0, 100) < dur / 10) {
-            if (!one_in(5)) {
-                mutate_category("MUTCAT_RAT");
-                it.mult_duration(.2);
-            } else {
-                mutate_category("MUTCAT_TROGLOBITE");
-                it.mult_duration(.33);
-            }
-        } else if (rng(0, 100) < dur / 8) {
-            if (one_in(3)) {
-                vomit();
-                it.mod_duration(-10);
-            } else {
-                add_msg(m_bad, _("You feel nauseous!"));
-                it.mod_duration(3);
-            }
-        }
-    } else if( id == effect_bleed ) {
-        // Presuming that during the first-aid process you're putting pressure
-        // on the wound or otherwise suppressing the flow. (Kits contain either
-        // quikclot or bandages per the recipe.)
-        if ( one_in(6 / intense) && activity.id() != activity_id( "ACT_FIRSTAID" ) ) {
-            add_msg_player_or_npc(m_bad, _("You lose some blood."),
-                                           _("<npcname> loses some blood.") );
-            // Prolonged haemorrhage is a significant risk for developing anaemia
-            vitamin_mod( vitamin_iron, rng( -1, -4 ) );
-            mod_pain(1);
-            apply_damage( nullptr, bp, 1 );
-            bleed();
-        }
-    } else if( id == effect_hallu ) {
-        // TODO: Redo this to allow for variable durations
-        // Time intervals are drawn from the old ones based on 3600 (6-hour) duration.
-        constexpr int maxDuration = 3600;
-        constexpr int comeupTime = int(maxDuration*0.9);
-        constexpr int noticeTime = int(comeupTime + (maxDuration-comeupTime)/2);
-        constexpr int peakTime = int(maxDuration*0.8);
-        constexpr int comedownTime = int(maxDuration*0.3);
-        // Baseline
-        if (dur == noticeTime) {
-            add_msg_if_player(m_warning, _("You feel a little strange."));
-        } else if (dur == comeupTime) {
-            // Coming up
-            if (one_in(2)) {
-                add_msg_if_player(m_warning, _("The world takes on a dreamlike quality."));
-            } else if (one_in(3)) {
-                add_msg_if_player(m_warning, _("You have a sudden nostalgic feeling."));
-            } else if (one_in(5)) {
-                add_msg_if_player(m_warning, _("Everything around you is starting to breathe."));
-            } else {
-                add_msg_if_player(m_warning, _("Something feels very, very wrong."));
-            }
-        } else if (dur > peakTime && dur < comeupTime) {
-            if( get_stomach_food() > 0 && (one_in(200) || x_in_y(vomit_mod(), 50)) ) {
-                add_msg_if_player(m_bad, _("You feel sick to your stomach."));
-                mod_hunger(-2);
-                if( one_in( 6 ) ) {
-                    vomit();
-                }
-            }
-            if( is_npc() && one_in( 200 ) ) {
-                static const std::array<std::string, 4> npc_hallu = {{
-                    _("\"I think it's starting to kick in.\""),
-                    _("\"Oh God, what's happening?\""),
-                    _("\"Of course... it's all fractals!\""),
-                    _("\"Huh?  What was that?\"")
-                }};
-
-                const std::string &npc_text = random_entry_ref( npc_hallu );
-                ///\EFFECT_STR_NPC increases volume of hallucination sounds (NEGATIVE)
-
-                ///\EFFECT_INT_NPC decreases volume of hallucination sounds
-                int loudness = 20 + str_cur - int_cur;
-                loudness = (loudness > 5 ? loudness : 5);
-                loudness = (loudness < 30 ? loudness : 30);
-                sounds::sound( pos(), loudness, npc_text );
-            }
-        } else if (dur == peakTime) {
-            // Visuals start
-            add_msg_if_player(m_bad, _("Fractal patterns dance across your vision."));
-            add_effect( effect_visuals, peakTime - comedownTime );
-        } else if (dur > comedownTime && dur < peakTime) {
-            // Full symptoms
-            mod_per_bonus(-2);
-            mod_int_bonus(-1);
-            mod_dex_bonus(-2);
-            add_miss_reason(_("Dancing fractals distract you."), 2);
-            mod_str_bonus(-1);
-            if( is_player() && one_in( 50 ) ) {
-                g->spawn_hallucination();
-            }
-        } else if (dur == comedownTime) {
-            if (one_in(42)) {
-                add_msg_if_player(_("Everything looks SO boring now."));
-            } else {
-                add_msg_if_player(_("Things are returning to normal."));
-            }
-        }
-    } else if( id == effect_cold ) {
-        switch(bp) {
-        case bp_head:
-            switch(intense) {
-            case 3:
-                mod_int_bonus(-2);
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(_("Your thoughts are unclear."));
-                }
-            case 2:
-                mod_int_bonus(-1);
-            default:
-                break;
-            }
-            break;
-        case bp_mouth:
-            switch(intense) {
-            case 3:
-                mod_per_bonus(-2);
-            case 2:
-                mod_per_bonus(-1);
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("Your face is stiff from the cold."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_torso:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-2);
-                add_miss_reason(_("You quiver from the cold."), 2);
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("Your torso is freezing cold. You should put on a few more layers."));
-                }
-            case 2:
-                mod_dex_bonus(-2);
-                add_miss_reason(_("Your shivering makes you unsteady."), 2);
-            }
-            break;
-        case bp_arm_l:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your left arm trembles from the cold."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your left arm is shivering."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_arm_r:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your right arm trembles from the cold."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your right arm is shivering."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_hand_l:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your left hand quivers in the cold."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your left hand feels like ice."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_hand_r:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your right hand trembles in the cold."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your right hand feels like ice."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_leg_l:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your legs uncontrollably shake from the cold."), 1);
-                mod_str_bonus(-1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your left leg trembles against the relentless cold."));
-                }
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your legs unsteadily shiver against the cold."), 1);
-                mod_str_bonus(-1);
-            default:
-                break;
-            }
-            break;
-        case bp_leg_r:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                mod_str_bonus(-1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your right leg trembles against the relentless cold."));
-                }
-            case 2:
-                mod_dex_bonus(-1);
-                mod_str_bonus(-1);
-            default:
-                break;
-            }
-            break;
-        case bp_foot_l:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your left foot is as nimble as a block of ice."), 1);
-                mod_str_bonus(-1);
-                break;
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your freezing left foot messes up your balance."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your left foot feels frigid."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_foot_r:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your right foot is as nimble as a block of ice."), 1);
-                mod_str_bonus(-1);
-                break;
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your freezing right foot messes up your balance."), 1);
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your right foot feels frigid."));
-                }
-            default:
-                break;
-            }
-            break;
-        default: // Suppress compiler warning [-Wswitch]
-            break;
-        }
-    } else if( id == effect_hot ) {
-        switch(bp) {
-        case bp_head:
-            switch(intense) {
-            case 3:
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("Your head is pounding from the heat."));
-                }
-                // Fall-through
-            case 2:
-                // Hallucinations handled in game.cpp
-                if (one_in(std::min(14500, 15000 - temp_cur[bp_head]))) {
-                    vomit();
-                }
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("The heat is making you see things."));
-                }
-                break;
-            default: // Suppress compiler warning [-Wswitch]
-                break;
-            }
-            break;
-        case bp_torso:
-            switch(intense) {
-            case 3:
-                mod_str_bonus(-1);
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("You are sweating profusely."));
-                }
-                // Fall-through
-            case 2:
-                mod_str_bonus(-1);
-                break;
-            default:
-                break;
-            }
-            break;
-        case bp_hand_l:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                // Fall-through
-            case 2:
-                add_miss_reason(_("Your left hand's too sweaty to grip well."), 1);
-                mod_dex_bonus(-1);
-            default:
-                break;
-            }
-            break;
-        case bp_hand_r:
-            switch(intense) {
-            case 3:
-                mod_dex_bonus(-1);
-                // Fall-through
-            case 2:
-                mod_dex_bonus(-1);
-                add_miss_reason(_("Your right hand's too sweaty to grip well."), 1);
-                break;
-            default:
-                break;
-            }
-            break;
-        case bp_leg_l:
-            switch (intense) {
-            case 3 :
-                if (one_in(2)) {
-                    if (!sleeping && msg_trig) {
-                        add_msg_if_player(m_bad, _("Your left leg is cramping up."));
-                    }
-                }
-                break;
-            default:
-                break;
-            }
-            break;
-        case bp_leg_r:
-            switch (intense) {
-            case 3 :
-                if (one_in(2)) {
-                    if (!sleeping && msg_trig) {
-                        add_msg_if_player(m_bad, _("Your right leg is cramping up."));
-                    }
-                }
-                break;
-            default:
-                break;
-            }
-            break;
-        case bp_foot_l:
-            switch (intense) {
-            case 3:
-                if (one_in(2)) {
-                    if (!sleeping && msg_trig) {
-                        add_msg_if_player(m_bad, _("Your left foot is swelling in the heat."));
-                    }
-                }
-                break;
-            default:
-                break;
-            }
-            break;
-        case bp_foot_r:
-            switch (intense) {
-            case 3:
-                if (one_in(2)) {
-                    if (!sleeping && msg_trig) {
-                        add_msg_if_player(m_bad, _("Your right foot is swelling in the heat."));
-                    }
-                }
-                break;
-            default:
-                break;
-            }
-            break;
-        default: // Suppress compiler warning [-Wswitch]
-            break;
-        }
-    } else if( id == effect_frostbite ) {
-        switch(bp) {
-        case bp_hand_l:
-        case bp_hand_r:
-            switch(intense) {
-            case 2:
-                add_miss_reason(_("You have trouble grasping with your numb fingers."), 2);
-                mod_dex_bonus(-2);
-            default:
-                break;
-            }
-            break;
-        case bp_foot_l:
-        case bp_foot_r:
-            switch(intense) {
-            case 2:
-            case 1:
-                if (!sleeping && msg_trig && one_in(2)) {
-                    add_msg_if_player(m_bad, _("Your foot has gone numb."));
-                }
-            default:
-                break;
-            }
-            break;
-        case bp_mouth:
-            switch(intense) {
-            case 2:
-                mod_per_bonus(-2);
-            case 1:
-                mod_per_bonus(-1);
-                if (!sleeping && msg_trig) {
-                    add_msg_if_player(m_bad, _("Your face feels numb."));
-                }
-            default:
-                break;
-            }
-            break;
-        default: // Suppress compiler warnings [-Wswitch]
-            break;
-        }
-    } else if( id == effect_dermatik ) {
-        bool triggered = false;
-        int formication_chance = 600;
-        if (dur < 2400) {
-            formication_chance += 2400 - dur;
-        }
-        if (one_in(formication_chance)) {
-            add_effect( effect_formication, 600, bp );
-        }
-        if (dur < 14400 && one_in(2400)) {
-            vomit();
-        }
-        if (dur > 14400) {
-            // Spawn some larvae!
-            // Choose how many insects; more for large characters
-            ///\EFFECT_STR_MAX increases number of insects hatched from dermatik infection
-            int num_insects = rng(1, std::min(3, str_max / 3));
-            apply_damage( nullptr, bp, rng( 2, 4 ) * num_insects );
-            // Figure out where they may be placed
-            add_msg_player_or_npc( m_bad, _("Your flesh crawls; insects tear through the flesh and begin to emerge!"),
-                _("Insects begin to emerge from <npcname>'s skin!") );
-            for (int i = posx() - 1; i <= posx() + 1; i++) {
-                for (int j = posy() - 1; j <= posy() + 1; j++) {
-                    if (num_insects == 0) {
-                        break;
-                    } else if (i == 0 && j == 0) {
-                        continue;
-                    }
-                    tripoint dest( i, j, posz() );
-                    if (g->mon_at( dest ) == -1) {
-                        if (g->summon_mon(mon_dermatik_larva, dest)) {
-                            monster *grub = g->monster_at(dest);
-                            if (one_in(3)) {
-                                grub->friendly = -1;
-                            }
-                        }
-                        num_insects--;
-                    }
-                }
-                if (num_insects == 0) {
-                    break;
-                }
-            }
-            add_memorial_log(pgettext("memorial_male", "Dermatik eggs hatched."),
-                               pgettext("memorial_female", "Dermatik eggs hatched."));
-            remove_effect( effect_formication, bp );
-            moves -= 600;
-            triggered = true;
-        }
-        if (triggered) {
-            // Set ourselves up for removal
-            it.set_duration(0);
-        } else {
-            // Count duration up
-            it.mod_duration(1);
-        }
-    } else if( id == effect_formication ) {
-        ///\EFFECT_INT decreases occurence of itching from formication effect
-        if (x_in_y(intense, 100 + 50 * get_int())) {
-            if (!is_npc()) {
-                //~ %s is bodypart in accusative.
-                 add_msg(m_warning, _("You start scratching your %s!"),
-                                          body_part_name_accusative(bp).c_str());
-                 g->cancel_activity();
-            } else if (g->u.sees( pos() )) {
-                //~ 1$s is NPC name, 2$s is bodypart in accusative.
-                add_msg(_("%1$s starts scratching their %2$s!"), name.c_str(),
-                                   body_part_name_accusative(bp).c_str());
-            }
-            moves -= 150;
-            apply_damage( nullptr, bp, 1 );
-        }
-    } else if( id == effect_evil ) {
-        // Worn or wielded; diminished effects
-        bool lesserEvil = weapon.has_effect_when_wielded( AEP_EVIL ) ||
-                          weapon.has_effect_when_carried( AEP_EVIL );
-        for( auto &w : worn ) {
-            if( w.has_effect_when_worn( AEP_EVIL ) ) {
-                lesserEvil = true;
-                break;
-            }
-        }
-        if (lesserEvil) {
-            // Only minor effects, some even good!
-            mod_str_bonus(dur > 4500 ? 10 : int(dur / 450));
-            if (dur < 600) {
-                mod_dex_bonus(1);
-            } else {
-                int dex_mod = -(dur > 3600 ? 10 : int((dur - 600) / 300));
-                mod_dex_bonus(dex_mod);
-                add_miss_reason(_("Why waste your time on that insignificant speck?"), -dex_mod);
-            }
-            mod_int_bonus(-(dur > 3000 ? 10 : int((dur - 500) / 250)));
-            mod_per_bonus(-(dur > 4800 ? 10 : int((dur - 800) / 400)));
-        } else {
-            // Major effects, all bad.
-            mod_str_bonus(-(dur > 5000 ? 10 : int(dur / 500)));
-            int dex_mod = -(dur > 6000 ? 10 : int(dur / 600));
-            mod_dex_bonus(dex_mod);
-            add_miss_reason(_("Why waste your time on that insignificant speck?"), -dex_mod);
-            mod_int_bonus(-(dur > 4500 ? 10 : int(dur / 450)));
-            mod_per_bonus(-(dur > 4000 ? 10 : int(dur / 400)));
-        }
-    } else if( id == effect_attention ) {
-        if (one_in(100000 / dur) && one_in(100000 / dur) && one_in(250)) {
-            tripoint dest( 0, 0, posz() );
-            int tries = 0;
-            do {
-                dest.x = posx() + rng(-4, 4);
-                dest.y = posy() + rng(-4, 4);
-                tries++;
-            } while ((dest == pos() || g->mon_at(dest) != -1) && tries < 10);
-            if (tries < 10) {
-                if (g->m.impassable( dest )) {
-                    g->m.make_rubble( dest, f_rubble_rock, true);
-                }
-                MonsterGroupResult spawn_details = MonsterGroupManager::GetResultFromGroup( mongroup_id( "GROUP_NETHER" ) );
-                g->summon_mon(spawn_details.name, dest);
-                if (g->u.sees( dest )) {
-                    g->cancel_activity_query(_("A monster appears nearby!"));
-                    add_msg_if_player(m_warning, _("A portal opens nearby, and a monster crawls through!"));
-                }
-                it.mult_duration(.25);
-            }
-        }
-    } else if( id == effect_meth ) {
-        if (intense == 1) {
-            add_miss_reason(_("The bees have started escaping your teeth."), 2);
-            if (one_in(150)) {
-                add_msg_if_player(m_bad, _("You feel paranoid.  They're watching you."));
-                mod_pain(1);
-                mod_fatigue(dice(1,6));
-            } else if (one_in(500)) {
-                add_msg_if_player(m_bad, _("You feel like you need less teeth.  You pull one out, and it is rotten to the core."));
-                mod_pain(1);
-            } else if (one_in(500)) {
-                add_msg_if_player(m_bad, _("You notice a large abscess.  You pick at it."));
-                body_part itch = random_body_part(true);
-                add_effect(effect_formication, 600, itch );
-                mod_pain(1);
-            } else if (one_in(500)) {
-                add_msg_if_player(m_bad, _("You feel so sick, like you've been poisoned, but you need more.  So much more."));
-                vomit();
-                mod_fatigue(dice(1,6));
-            }
-        }
-    } else if( id == effect_teleglow ) {
-        // Default we get around 300 duration points per teleport (possibly more
-        // depending on the source).
-        // TODO: Include a chance to teleport to the nether realm.
-        // TODO: This with regards to NPCS
-        if(!is_player()) {
-            // NO, no teleporting around the player because an NPC has teleglow!
-            return;
-        }
-        if (dur > 6000) {
-            // 20 teles (no decay; in practice at least 21)
-            if (one_in(1000 - ((dur - 6000) / 10))) {
-                if (!is_npc()) {
-                    add_msg(_("Glowing lights surround you, and you teleport."));
-                    add_memorial_log(pgettext("memorial_male", "Spontaneous teleport."),
-                                          pgettext("memorial_female", "Spontaneous teleport."));
-                }
-                g->teleport();
-                if (one_in(10)) {
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                }
-            }
-            if (one_in(1200 - ((dur - 6000) / 5)) && one_in(20)) {
-                if (!is_npc()) {
-                    add_msg(m_bad, _("You pass out."));
-                }
-                fall_asleep(1200);
-                if (one_in(6)) {
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                }
-            }
-        }
-        if (dur > 3600) {
-            // 12 teles
-            if (one_in(4000 - int(.25 * (dur - 3600)))) {
-                tripoint dest( 0, 0, posz() );
-                int &x = dest.x;
-                int &y = dest.y;
-                int tries = 0;
-                do {
-                    x = posx() + rng(-4, 4);
-                    y = posy() + rng(-4, 4);
-                    tries++;
-                    if (tries >= 10) {
-                        break;
-                    }
-                } while (((x == posx() && y == posy()) || g->mon_at( dest ) != -1));
-                if (tries < 10) {
-                    if (g->m.impassable(x, y)) {
-                        g->m.make_rubble( tripoint( x, y, posz() ), f_rubble_rock, true);
-                    }
-                    MonsterGroupResult spawn_details = MonsterGroupManager::GetResultFromGroup( mongroup_id( "GROUP_NETHER" ) );
-                    g->summon_mon( spawn_details.name, dest );
-                    if (g->u.sees(x, y)) {
-                        g->cancel_activity_query(_("A monster appears nearby!"));
-                        add_msg(m_warning, _("A portal opens nearby, and a monster crawls through!"));
-                    }
-                    if (one_in(2)) {
-                        // Set ourselves up for removal
-                        it.set_duration(0);
-                    }
-                }
-            }
-            if (one_in(3500 - int(.25 * (dur - 3600)))) {
-                add_msg_if_player(m_bad, _("You shudder suddenly."));
-                mutate();
-                if (one_in(4)) {
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                }
-            }
-        } if (dur > 2400) {
-            // 8 teleports
-            if (one_in(10000 - dur) && !has_effect( effect_valium )) {
-                add_effect(effect_shakes, rng( 40, 80 ) );
-            }
-            if (one_in(12000 - dur)) {
-                add_msg_if_player(m_bad, _("Your vision is filled with bright lights..."));
-                add_effect( effect_blind, rng( 10, 20 ) );
-                if (one_in(8)) {
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                }
-            }
-            if (one_in(5000) && !has_effect( effect_hallu )) {
-                add_effect( effect_hallu, 3600 );
-                if (one_in(5)) {
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                }
-            }
-        }
-        if (one_in(4000)) {
-            add_msg_if_player(m_bad, _("You're suddenly covered in ectoplasm."));
-            add_effect(effect_boomered, 100 );
-            if (one_in(4)) {
-                // Set ourselves up for removal
-                it.set_duration(0);
-            }
-        }
-        if (one_in(10000)) {
-            if (!has_trait("M_IMMUNE")) {
-                add_effect( effect_fungus, 1, num_bp, true );
-            } else {
-                add_msg_if_player(m_info, _("We have many colonists awaiting passage."));
-            }
-            // Set ourselves up for removal
-            it.set_duration(0);
-        }
-    } else if( id == effect_asthma ) {
-        if( has_effect( effect_adrenaline ) || has_effect( effect_datura ) ) {
-            add_msg_if_player( m_good, _("Your asthma attack stops.") );
-            it.set_duration( 0 );
-        } else if( dur > 1200 ) {
-            add_msg_if_player(m_bad, _("Your asthma overcomes you.\nYou asphyxiate."));
-            if (is_player()) {
-                add_memorial_log(pgettext("memorial_male", "Succumbed to an asthma attack."),
-                                  pgettext("memorial_female", "Succumbed to an asthma attack."));
-            }
-            hurtall(500, nullptr);
-        } else if (dur > 700) {
-            if (one_in(20)) {
-                add_msg_if_player(m_bad, _("You wheeze and gasp for air."));
-            }
-        }
-    } else if( id == effect_stemcell_treatment ) {
-        // slightly repair broken limbs. (also nonbroken limbs (unless they're too healthy))
-        for (int i = 0; i < num_hp_parts; i++) {
-            if (one_in(6)) {
-                if (hp_cur[i] < rng(0, 40)) {
-                    add_msg_if_player(m_good, _("Your bones feel like rubber as they melt and remend."));
-                    hp_cur[i]+= rng(1,8);
-                } else if (hp_cur[i] > rng(10, 2000)) {
-                    add_msg_if_player(m_bad, _("Your bones feel like they're crumbling."));
-                    hp_cur[i] -= rng(0,8);
-                }
-            }
-        }
-    } else if( id == effect_brainworms ) {
-        if (one_in(256)) {
-            add_msg_if_player(m_bad, _("Your head aches faintly."));
-        }
-        if(one_in(1024)) {
-            mod_healthy_mod(-10, -100);
-            apply_damage( nullptr, bp_head, rng( 0, 1 ) );
-            if (!has_effect( effect_visuals )) {
-                add_msg_if_player(m_bad, _("Your vision is getting fuzzy."));
-                add_effect( effect_visuals, rng( 10, 600 ) );
-            }
-        }
-        if(one_in(4096)) {
-            mod_healthy_mod(-10, -100);
-            apply_damage( nullptr, bp_head, rng( 1, 2 ) );
-            if (!has_effect( effect_blind )) {
-                add_msg_if_player(m_bad, _("Your vision goes black!"));
-                add_effect( effect_blind, rng( 5, 20 ) );
-            }
-        }
-    } else if( id == effect_tapeworm ) {
-        if (one_in(512)) {
-            add_msg_if_player(m_bad, _("Your bowels ache."));
-        }
-    } else if( id == effect_bloodworms ) {
-        if (one_in(512)) {
-            add_msg_if_player(m_bad, _("Your veins itch."));
-        }
-    } else if( id == effect_paincysts ) {
-        if (one_in(512)) {
-            add_msg_if_player(m_bad, _("Your muscles feel like they're knotted and tired."));
-        }
-    } else if( id == effect_tetanus ) {
-        if (one_in(256)) {
-            add_msg_if_player(m_bad, _("Your muscles are tight and sore."));
-        }
-        if (!has_effect( effect_valium )) {
-            add_miss_reason(_("Your muscles are locking up and you can't fight effectively."), 4);
-            if (one_in(512)) {
-                add_msg_if_player(m_bad, _("Your muscles spasm."));
-                add_effect( effect_downed, rng( 1,4 ), num_bp, false, 0, true );
-                add_effect( effect_stunned, rng( 1, 4 ) );
-                if (one_in(10)) {
-                    mod_pain(rng(1, 10));
-                }
-            }
-        }
-    } else if( id == effect_datura ) {
-        if (dur > 1000 && focus_pool >= 1 && one_in(4)) {
-            focus_pool--;
-        }
-        if (dur > 2000 && one_in(8) && stim < 20) {
-            stim++;
-        }
-        if (dur > 3000 && focus_pool >= 1 && one_in(2)) {
-            focus_pool--;
-        }
-        if (dur > 4000 && one_in(64)) {
-            mod_pain(rng(-1, -8));
-        }
-        if ((!has_effect( effect_hallu )) && (dur > 5000 && one_in(4))) {
-            add_effect( effect_hallu, 3600 );
-        }
-        if (dur > 6000 && one_in(128)) {
-            mod_pain(rng(-3, -24));
-            if (dur > 8000 && one_in(16)) {
-                add_msg_if_player(m_bad, _("You're experiencing loss of basic motor skills and blurred vision.  Your mind recoils in horror, unable to communicate with your spinal column."));
-                add_msg_if_player(m_bad, _("You stagger and fall!"));
-                add_effect( effect_downed, rng( 1, 4 ), num_bp, false, 0, true );
-                if (one_in(8) || x_in_y(vomit_mod(), 10)) {
-                    vomit();
-                }
-            }
-        }
-        if (dur > 7000 && focus_pool >= 1) {
-            focus_pool--;
-        }
-        if (dur > 8000 && one_in(256)) {
-            add_effect( effect_visuals, rng( 40, 200 ) );
-            mod_pain(rng(-8, -40));
-        }
-        if (dur > 12000 && one_in(256)) {
-            add_msg_if_player(m_bad, _("There's some kind of big machine in the sky."));
-            add_effect( effect_visuals, rng( 80, 400 ) );
-            if (one_in(32)) {
-                add_msg_if_player(m_bad, _("It's some kind of electric snake, coming right at you!"));
-                mod_pain(rng(4, 40));
-                vomit();
-            }
-        }
-        if (dur > 14000 && one_in(128)) {
-            add_msg_if_player(m_bad, _("Order us some golf shoes, otherwise we'll never get out of this place alive."));
-            add_effect( effect_visuals, rng( 400, 2000 ) );
-            if (one_in(8)) {
-                add_msg_if_player(m_bad, _("The possibility of physical and mental collapse is now very real."));
-                if (one_in(2) || x_in_y(vomit_mod(), 10)) {
-                    add_msg_if_player(m_bad, _("No one should be asked to handle this trip."));
-                    vomit();
-                    mod_pain(rng(8, 40));
-                }
-            }
-        }
-
-        if( dur > 18000 && one_in( MINUTES( 5 ) * 512 ) ) {
-            if( !has_trait( "NOPAIN" ) ) {
-                add_msg_if_player(m_bad, _("Your heart spasms painfully and stops, dragging you back to reality as you die."));
-            } else {
-                add_msg_if_player(_("You dissolve into beautiful paroxysms of energy.  Life fades from your nebulae and you are no more."));
-            }
-            add_memorial_log(pgettext("memorial_male", "Died of datura overdose."),
-                               pgettext("memorial_female", "Died of datura overdose."));
-            hp_cur[hp_torso] = 0;
-        }
-    } else if( id == effect_grabbed ) {
-        blocks_left -= 1;
-        int zed_number = 0;
-        for( auto &dest : g->m.points_in_radius( pos(), 1, 0 ) ){
-            if (g->mon_at(dest) != -1){
-                zed_number ++;
-            }
-        }
-        if (zed_number > 0){
-            add_effect( effect_grabbed, 2, bp_torso, false, (intense + zed_number) / 2); //If intensity isn't pass the cap, average it with # of zeds
-        }
-    } else if( id == effect_bite ) {
-        bool recovered = false;
-        /* Recovery chances, use binomial distributions if balancing here. Healing in the bite
-         * stage provides additional benefits, so both the bite stage chance of healing and
-         * the cumulative chances for spontaneous healing are both given.
-         * Cumulative heal chances for the bite + infection stages:
-         * -200 health - 38.6%
-         *    0 health - 46.8%
-         *  200 health - 53.7%
-         *
-         * Heal chances in the bite stage:
-         * -200 health - 23.4%
-         *    0 health - 28.3%
-         *  200 health - 32.9%
-         *
-         * Cumulative heal chances the bite + infection stages with the resistant mutation:
-         * -200 health - 82.6%
-         *    0 health - 84.5%
-         *  200 health - 86.1%
-         *
-         * Heal chances in the bite stage with the resistant mutation:
-         * -200 health - 60.7%
-         *    0 health - 63.2%
-         *  200 health - 65.6%
-         */
-        if (dur % 10 == 0)  {
-            int recover_factor = 100;
-            if (has_effect( effect_recover )) {
-                recover_factor -= get_effect_dur( effect_recover ) / 600;
-            }
-            if (has_trait("INFRESIST")) {
-                recover_factor += 200;
-            }
-            recover_factor += get_healthy() / 10;
-
-            if (x_in_y(recover_factor, 108000)) {
-                //~ %s is bodypart name.
-                add_msg_if_player(m_good, _("Your %s wound begins to feel better."),
-                                     body_part_name(bp).c_str());
-                // Set ourselves up for removal
-                it.set_duration(0);
-                recovered = true;
-            }
-        }
-        if (!recovered) {
-            // Move up to infection
-            if (dur > 3600) {
-                add_effect( effect_infected, 1, bp, true );
-                // Set ourselves up for removal
-                it.set_duration(0);
-            } else {
-                it.mod_duration(1);
-            }
-        }
-    } else if( id == effect_infected ) {
-        bool recovered = false;
-        // Recovery chance, use binomial distributions if balancing here.
-        // See "bite" for balancing notes on this.
-        if (dur % 10 == 0)  {
-            int recover_factor = 100;
-            if (has_effect( effect_recover )) {
-                recover_factor -= get_effect_dur( effect_recover ) / 600;
-            }
-            if (has_trait("INFRESIST")) {
-                recover_factor += 200;
-            }
-            recover_factor += get_healthy() / 10;
-
-            if (x_in_y(recover_factor, 864000)) {
-                //~ %s is bodypart name.
-                add_msg_if_player(m_good, _("Your %s wound begins to feel better."),
-                                     body_part_name(bp).c_str());
-                add_effect( effect_recover, 4 * dur );
-                // Set ourselves up for removal
-                it.set_duration(0);
-                recovered = true;
-            }
-        }
-        if (!recovered) {
-            // Death happens
-            if (dur > 14400) {
-                add_msg_if_player(m_bad, _("You succumb to the infection."));
-                add_memorial_log(pgettext("memorial_male", "Succumbed to the infection."),
-                                      pgettext("memorial_female", "Succumbed to the infection."));
-                hurtall(500, nullptr);
-            }
-            it.mod_duration(1);
-        }
-    } else if( id == effect_lying_down ) {
-        set_moves(0);
-        if (can_sleep()) {
-            add_msg_if_player(_("You fall asleep."));
-            // Communicate to the player that he is using items on the floor
-            std::string item_name = is_snuggling();
-            if (item_name == "many") {
-                if (one_in(15) ) {
-                    add_msg_if_player(_("You nestle your pile of clothes for warmth."));
-                } else {
-                    add_msg_if_player(_("You use your pile of clothes for warmth."));
-                }
-            } else if (item_name != "nothing") {
-                if (one_in(15)) {
-                    add_msg_if_player(_("You snuggle your %s to keep warm."), item_name.c_str());
-                } else {
-                    add_msg_if_player(_("You use your %s to keep warm."), item_name.c_str());
-                }
-            }
-            if( has_active_mutation("HIBERNATE") && get_hunger() < -60 ) {
-                add_memorial_log(pgettext("memorial_male", "Entered hibernation."),
-                                   pgettext("memorial_female", "Entered hibernation."));
-                // 10 days' worth of round-the-clock Snooze.  Cata seasons default to 14 days.
-                fall_asleep(144000);
-                // If you're not fatigued enough for 10 days, you won't sleep the whole thing.
-                // In practice, the fatigue from filling the tank from (no msg) to Time For Bed
-                // will last about 8 days.
-            }
-
-            fall_asleep(6000); //10 hours, default max sleep time.
-            // Set ourselves up for removal
-            it.set_duration(0);
-        }
-        if (dur == 1 && !sleeping) {
-            add_msg_if_player(_("You try to sleep, but can't..."));
-        }
-    } else if( id == effect_sleep ) {
-        set_moves(0);
-        #ifdef TILES
-        if( is_player() && calendar::once_every(MINUTES(10)) ) {
-            SDL_PumpEvents();
-        }
-        #endif // TILES
-
-        if( intense < 24 ) {
-            it.mod_intensity(1);
-        } else if( intense < 1 ) {
-            it.set_intensity(1);
-        }
-
-        if( get_fatigue() < -25 && it.get_duration() > 30 ) {
-            it.set_duration(dice(3, 10));
-        }
-
-        if( get_fatigue() <= 0 && get_fatigue() > -20 ) {
-            mod_fatigue(-25);
-            add_msg_if_player(m_good, _("You feel well rested."));
-            it.set_duration(dice(3, 100));
-        }
-
-        // TODO: Move this to update_needs when NPCs can mutate
-        if( calendar::once_every(MINUTES(10)) && has_trait("CHLOROMORPH") &&
-            g->is_in_sunlight(pos()) ) {
-            // Hunger and thirst fall before your Chloromorphic physiology!
-            if (get_hunger() >= -30) {
-                mod_hunger(-5);
-            }
-            if (get_thirst() >= -30) {
-                mod_thirst(-5);
-            }
-        }
-
-        // Check mutation category strengths to see if we're mutated enough to get a dream
-        std::string highcat = get_highest_category();
-        int highest = mutation_category_level[highcat];
-
-        // Determine the strength of effects or dreams based upon category strength
-        int strength = 0; // Category too weak for any effect or dream
-        if (crossed_threshold()) {
-            strength = 4; // Post-human.
-        } else if (highest >= 20 && highest < 35) {
-            strength = 1; // Low strength
-        } else if (highest >= 35 && highest < 50) {
-            strength = 2; // Medium strength
-        } else if (highest >= 50) {
-            strength = 3; // High strength
-        }
-
-        // Get a dream if category strength is high enough.
-        if (strength != 0) {
-            //Once every 6 / 3 / 2 hours, with a bit of randomness
-            if ((int(calendar::turn) % (3600 / strength) == 0) && one_in(3)) {
-                // Select a dream
-                std::string dream = get_category_dream(highcat, strength);
-                if( !dream.empty() ) {
-                    add_msg_if_player( "%s", dream.c_str() );
-                }
-                // Mycus folks upgrade in their sleep.
-                if (has_trait("THRESH_MYCUS")) {
-                    if (one_in(8)) {
-                        mutate_category("MUTCAT_MYCUS");
-                        mod_hunger(10);
-                        mod_thirst(10);
-                        mod_fatigue(5);
-                    }
-                }
-            }
-        }
-
-        bool woke_up = false;
-        int tirednessVal = rng(5, 200) + rng(0, abs(get_fatigue() * 2 * 5));
-        if( !is_blind() ) {
-            if (has_trait("HEAVYSLEEPER2") && !has_trait("HIBERNATE")) {
-                // So you can too sleep through noon
-                if ((tirednessVal * 1.25) < g->m.ambient_light_at(pos()) && (get_fatigue() < 10 || one_in(get_fatigue() / 2))) {
-                    add_msg_if_player(_("It's too bright to sleep."));
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                    woke_up = true;
-                }
-             // Ursine hibernators would likely do so indoors.  Plants, though, might be in the sun.
-            } else if (has_trait("HIBERNATE")) {
-                if ((tirednessVal * 5) < g->m.ambient_light_at(pos()) && (get_fatigue() < 10 || one_in(get_fatigue() / 2))) {
-                    add_msg_if_player(_("It's too bright to sleep."));
-                    // Set ourselves up for removal
-                    it.set_duration(0);
-                    woke_up = true;
-                }
-            } else if (tirednessVal < g->m.ambient_light_at(pos()) && (get_fatigue() < 10 || one_in(get_fatigue() / 2))) {
-                add_msg_if_player(_("It's too bright to sleep."));
-                // Set ourselves up for removal
-                it.set_duration(0);
-                woke_up = true;
-            }
-        }
-
-        // Have we already woken up?
-        if (!woke_up) {
-            // Cold or heat may wake you up.
-            // Player will sleep through cold or heat if fatigued enough
-            for (int i = 0 ; i < num_bp ; i++) {
-                if (temp_cur[i] < BODYTEMP_VERY_COLD - get_fatigue() / 2) {
-                    if (one_in(5000)) {
-                        add_msg_if_player(_("You toss and turn trying to keep warm."));
-                    }
-                    if (temp_cur[i] < BODYTEMP_FREEZING - get_fatigue() / 2 ||
-                                        one_in(temp_cur[i] + 5000)) {
-                        add_msg_if_player(m_bad, _("It's too cold to sleep."));
-                        // Set ourselves up for removal
-                        it.set_duration(0);
-                        woke_up = true;
-                        break;
-                    }
-                } else if (temp_cur[i] > BODYTEMP_VERY_HOT + get_fatigue() / 2) {
-                    if (one_in(5000)) {
-                        add_msg_if_player(_("You toss and turn in the heat."));
-                    }
-                    if (temp_cur[i] > BODYTEMP_SCORCHING + get_fatigue() / 2 ||
-                                        one_in(15000 - temp_cur[i])) {
-                        add_msg_if_player(m_bad, _("It's too hot to sleep."));
-                        // Set ourselves up for removal
-                        it.set_duration(0);
-                        woke_up = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // A bit of a hack: check if we are about to wake up for any reason,
-        // including regular timing out of sleep
-        if( (it.get_duration() == 1 || woke_up) && calendar::turn - start > HOURS(2) ) {
-            print_health();
-        }
-    } else if( id == effect_alarm_clock ) {
-        if( has_effect( effect_sleep ) ) {
-            if (dur == 1) {
-                if(has_bionic("bio_watch")) {
-                    // Normal alarm is volume 12, tested against (2/3/6)d15 for
-                    // normal/HEAVYSLEEPER/HEAVYSLEEPER2.
-                    //
-                    // It's much harder to ignore an alarm inside your own skull,
-                    // so this uses an effective volume of 20.
-                    const int volume = 20;
-                    if ( (!(has_trait("HEAVYSLEEPER") || has_trait("HEAVYSLEEPER2")) &&
-                          dice(2, 15) < volume) ||
-                          (has_trait("HEAVYSLEEPER") && dice(3, 15) < volume) ||
-                          (has_trait("HEAVYSLEEPER2") && dice(6, 15) < volume) ) {
-                        wake_up();
-                        add_msg_if_player(_("Your internal chronometer wakes you up."));
-                    } else {
-                        // 10 minute cyber-snooze
-                        it.mod_duration(100);
-                    }
-                } else {
-                    sounds::sound( pos(), 16, _("beep-beep-beep!"));
-                    if( !can_hear( pos(), 16 ) ) {
-                        // 10 minute automatic snooze
-                        it.mod_duration(100);
-                    } else {
-                        add_msg_if_player(_("You turn off your alarm-clock."));
-                    }
-                }
-            }
-        }
-    }
-}
-
 double player::vomit_mod()
 {
     double mod = 1;
@@ -7615,6 +5219,14 @@ double player::vomit_mod()
 
 void player::suffer()
 {
+    // @todo Remove this section and encapsulate hp_cur
+    for( int i = 0; i < num_hp_parts; i++ ) {
+        body_part bp = hp_to_bp( static_cast<hp_part>( i ) );
+        if( hp_cur[i] <= 0 ) {
+            add_effect( effect_disabled, 1, bp, true );
+        }
+    }
+
     for (size_t i = 0; i < my_bionics.size(); i++) {
         if (my_bionics[i].powered) {
             process_bionic(i);
@@ -7700,7 +5312,7 @@ void player::suffer()
             mod_healthy_mod(10, 50);
             // No losing oneself in the fertile embrace of rich
             // New England loam.  But it can be a near thing.
-            ///\EFFECT_INT decreases chance of losing focus points while eating soil with ROOTS3
+            /** @EFFECT_INT decreases chance of losing focus points while eating soil with ROOTS3 */
             if ( (one_in(int_cur)) && (focus_pool >= 25) ) {
                 focus_pool--;
             }
@@ -8178,7 +5790,7 @@ void player::suffer()
         } else if (radiation > 2000) {
             radiation = 2000;
         }
-        if( get_option<bool>( "RAD_MUTATION" ) && rng(100, 10000) < radiation ) {
+        if( get_world_option<bool>( "RAD_MUTATION" ) && rng(100, 10000) < radiation ) {
             mutate();
             radiation -= 50;
         } else if( radiation > 50 && rng(1, 3000) < radiation &&
@@ -8369,6 +5981,17 @@ void player::suffer()
     }
 }
 
+// At minimum level, return at_min, at maximum at_max
+float addiction_scaling( float at_min, float at_max, float add_lvl )
+{
+    // Not addicted
+    if( add_lvl < MIN_ADDICTION_LEVEL ) {
+        return 1.0f;
+    }
+
+    return lerp( at_min, at_max, ( add_lvl - MIN_ADDICTION_LEVEL ) / MAX_ADDICTION_LEVEL );
+}
+
 void player::mend( int rate_multiplier )
 {
     // Wearing splints can slowly mend a broken limb back to 1 hp.
@@ -8384,18 +6007,25 @@ void player::mend( int rate_multiplier )
         return;
     }
 
-    const double mending_odds = 500.0; // ~50% to mend in a week
     double healing_factor = 1.0;
     // Studies have shown that alcohol and tobacco use delay fracture healing time
-    if( has_effect( effect_cig ) || addiction_level(ADD_CIG) > 0 ) {
+    // Being under effect is 50% slowdown
+    // Being addicted but not under effect scales from 25% slowdown to 75% slowdown
+    // The improvement from being intoxicated over withdrawal is intended
+    if( has_effect( effect_cig ) ) {
         healing_factor *= 0.5;
+    } else {
+        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( ADD_CIG ) );
     }
-    if( has_effect( effect_drunk ) || addiction_level(ADD_ALCOHOL) > 0 ) {
+
+    if( has_effect( effect_drunk ) ) {
         healing_factor *= 0.5;
+    } else {
+        healing_factor *= addiction_scaling( 0.25f, 0.75f, addiction_level( ADD_ALCOHOL ) );
     }
 
     if( radiation > 0 && !has_trait( "RADIOGENIC" ) ) {
-        healing_factor *= std::max( 0.0f, (1000.0f - radiation) / 1000.0f );
+        healing_factor *= clamp( ( 1000.0f - radiation ) / 1000.0f, 0.0f, 1.0f );
     }
 
     // Bed rest speeds up mending
@@ -8404,22 +6034,26 @@ void player::mend( int rate_multiplier )
     } else if( get_fatigue() > DEAD_TIRED ) {
         // but being dead tired does not...
         healing_factor *= 0.75;
+    } else {
+        // If not dead tired, resting without sleep also helps
+        healing_factor *= 1.0f + rest_quality();
     }
 
     // Being healthy helps.
     healing_factor *= 1.0f + get_healthy() / 200.0f;
 
-    // And being well fed...
-    if( get_hunger() < 0 ) {
-        healing_factor *= 2.0;
-    }
-
-    if( get_thirst() < 0 ) {
-        healing_factor *= 2.0;
-    }
+    // Very hungry starts lowering the chance
+    // Healing stops completely halfway between near starving and starving
+    healing_factor *= 1.0f - clamp( ( get_hunger() - 100.0f ) / 2000.0f, 0.0f, 1.0f );
+    // Similar for thirst - starts at very thirsty, drops to 0 ~halfway between two last statuses
+    healing_factor *= 1.0f - clamp( ( get_thirst() - 80.0f ) / 300.0f, 0.0f, 1.0f );
 
     // Mutagenic healing factor!
-    if( has_trait("REGEN") ) {
+    bool needs_splint = true;
+    if( has_trait("REGEN_LIZ") ) {
+        healing_factor *= 20.0;
+        needs_splint = false;
+    } else if( has_trait("REGEN") ) {
         healing_factor *= 16.0;
     } else if( has_trait("FASTHEALER2") ) {
         healing_factor *= 4.0;
@@ -8429,61 +6063,42 @@ void player::mend( int rate_multiplier )
         healing_factor *= 0.5;
     }
 
-    if( has_trait("REGEN_LIZ") ) {
-        healing_factor = 20.0;
+    add_msg( m_debug, "Limb mend healing factor: %.2f", healing_factor );
+    if( healing_factor <= 0.0f ) {
+        // The section below assumes positive healing rate
+        return;
     }
 
-    for( int iter = 0; iter < rate_multiplier; iter++ ) {
-        bool any_broken = false;
-        for( int i = 0; i < num_hp_parts; i++ ) {
-            const bool broken = (hp_cur[i] <= 0);
-            if( !broken ) {
-                continue;
-            }
-
-            any_broken = true;
-
-            bool mended = false;
-            body_part part;
-            switch(i) {
-                case hp_arm_r:
-                    part = bp_arm_r;
-                    mended = is_wearing_on_bp("arm_splint", bp_arm_r) && x_in_y(healing_factor, mending_odds);
-                    break;
-                case hp_arm_l:
-                    part = bp_arm_l;
-                    mended = is_wearing_on_bp("arm_splint", bp_arm_l) && x_in_y(healing_factor, mending_odds);
-                    break;
-                case hp_leg_r:
-                    part = bp_leg_r;
-                    mended = is_wearing_on_bp("leg_splint", bp_leg_r) && x_in_y(healing_factor, mending_odds);
-                    break;
-                case hp_leg_l:
-                    part = bp_leg_l;
-                    mended = is_wearing_on_bp("leg_splint", bp_leg_l) && x_in_y(healing_factor, mending_odds);
-                    break;
-                default:
-                    // No mending for you!
-                    continue;
-            }
-            if( mended == false && has_trait("REGEN_LIZ") ) {
-                // Splints aren't *strictly* necessary for your anatomy
-                mended = x_in_y(healing_factor * 0.2, mending_odds);
-            }
-            if( mended ) {
-                hp_cur[i] = 1;
-                //~ %s is bodypart
-                add_memorial_log( pgettext("memorial_male", "Broken %s began to mend."),
-                                  pgettext("memorial_female", "Broken %s began to mend."),
-                                  body_part_name(part).c_str() );
-                //~ %s is bodypart
-                add_msg_if_player( m_good, _("Your %s has started to mend!"),
-                    body_part_name(part).c_str());
-            }
+    for( int i = 0; i < num_hp_parts; i++ ) {
+        const bool broken = (hp_cur[i] <= 0);
+        if( !broken ) {
+            continue;
         }
 
-        if( !any_broken ) {
-            return;
+        body_part part = hp_to_bp( static_cast<hp_part>( i ) );
+        if( needs_splint && !worn_with_flag( "SPLINT", part ) ) {
+            continue;
+        }
+
+        int dur_inc = roll_remainder( rate_multiplier * healing_factor );
+        auto &eff = get_effect( effect_mending, part );
+        if( eff.is_null() ) {
+            add_effect( effect_mending, dur_inc, part, true );
+            continue;
+        }
+
+        eff.set_duration( eff.get_duration() + dur_inc );
+
+        if( eff.get_duration() >= eff.get_max_duration() ) {
+            hp_cur[i] = 1;
+            remove_effect( effect_mending, part );
+            //~ %s is bodypart
+            add_memorial_log( pgettext("memorial_male", "Broken %s began to mend."),
+                              pgettext("memorial_female", "Broken %s began to mend."),
+                              body_part_name( part ).c_str() );
+            //~ %s is bodypart
+            add_msg_if_player( m_good, _("Your %s has started to mend!"),
+                               body_part_name( part ).c_str() );
         }
     }
 }
@@ -9557,32 +7172,15 @@ item::reload_option player::select_ammo( const item &base, const std::vector<ite
         return row;
     };
 
-    struct : public uimenu_callback {
-        std::function<std::string( int )> draw_row;
-
-        bool key( const input_event &event, int idx, uimenu * menu ) override {
-            auto &sel = static_cast<std::vector<reload_option> *>( myptr )->operator[]( idx );
-            switch( event.get_first_input() ) {
-                case KEY_LEFT:
-                    sel.qty( sel.qty() - 1 );
-                    menu->entries[ idx ].txt = draw_row( idx );
-                    return true;
-
-                case KEY_RIGHT:
-                    sel.qty( sel.qty() + 1 );
-                    menu->entries[ idx ].txt = draw_row( idx );
-                    return true;
-            }
-            return false;
-        }
-    } cb;
-    cb.setptr( const_cast<std::vector<reload_option> *>( &opts ) );
-    cb.draw_row = draw_row;
-    menu.callback = &cb;
-
     itype_id last = uistate.lastreload[ base.ammo_type() ];
+    // We keep the last key so that pressing the key twice (for example, r-r for reload)
+    // will always pick the first option on the list.
+    int last_key = inp_mngr.get_previously_pressed_key();
+    bool last_key_bound = false;
+    // This is the entry that has out default
+    int default_to = 0;
 
-    for( auto i = 0; i != (int) opts.size(); ++i ) {
+    for( auto i = 0; i != ( int )opts.size(); ++i ) {
         const item& ammo = opts[ i ].ammo->is_ammo_container() ? opts[ i ].ammo->contents.front() : *opts[ i ].ammo;
 
         char hotkey = -1;
@@ -9599,15 +7197,69 @@ item::reload_option player::select_ammo( const item &base, const std::vector<ite
                 }
             }
         }
-        if( hotkey == -1 && last == ammo.typeId() ) {
-            // if this is the first occurrence of the most recently used type of ammo and the hotkey
-            // was not already set above then set it to the keypress that opened this prompt
-            hotkey = inp_mngr.get_previously_pressed_key();
-            last = std::string();
+        if( last == ammo.typeId() ) {
+            if( !last_key_bound && hotkey == -1 ) {
+                // If this is the first occurrence of the most recently used type of ammo and the hotkey
+                // was not already set above then set it to the keypress that opened this prompt
+                hotkey = last_key;
+                last_key_bound = true;
+            }
+            if( !last_key_bound ) {
+                // Pressing the last key defaults to the first entry of compatible type
+                default_to = i;
+                last_key_bound = true;
+            }
+        }
+        if( hotkey == last_key ) {
+            last_key_bound = true;
+            // Prevent the default from being used: key is bound to something already
+            default_to = -1;
         }
 
         menu.addentry( i, true, hotkey, draw_row( i ) );
     }
+
+    struct reload_callback : public uimenu_callback {
+        public:
+            std::vector<item::reload_option> &opts;
+            const std::function<std::string( int )> &draw_row;
+            int last_key;
+            int default_to;
+
+            reload_callback( std::vector<item::reload_option> &_opts,
+                             const std::function<std::string( int )> &_draw_row,
+                             int _last_key, int _default_to ) :
+                           opts( _opts ), draw_row( _draw_row ),
+                           last_key( _last_key ), default_to( _default_to )
+            {}
+
+            bool key( const input_event &event, int idx, uimenu * menu ) override {
+                auto cur_key = event.get_first_input();
+                if( default_to != -1 && cur_key == last_key ) {
+                    // Select the first entry on the list
+                    menu->ret = default_to;
+                    return true;
+                }
+                if( idx < 0 || idx > (int)opts.size() - 1 ) {
+                    return false;
+                }
+                auto &sel = opts[ idx ];
+                switch( cur_key ) {
+                    case KEY_LEFT:
+                        sel.qty( sel.qty() - 1 );
+                        menu->entries[ idx ].txt = draw_row( idx );
+                        return true;
+
+                    case KEY_RIGHT:
+                        sel.qty( sel.qty() + 1 );
+                        menu->entries[ idx ].txt = draw_row( idx );
+                        return true;
+                }
+                return false;
+            }
+        // @todo Get rid of the const cast - it's fucking bullshit
+    } cb( const_cast<std::vector<item::reload_option> &>( opts ), draw_row, last_key, default_to );
+    menu.callback = &cb;
 
     menu.query();
     if( menu.ret < 0 || menu.ret >= ( int ) opts.size() ) {
@@ -9888,14 +7540,14 @@ bool player::wield( item& target )
     // than a skilled player with a holster.
     // There is an additional penalty when wielding items from the inventory whilst currently grabbed.
 
-    mv += item_handling_cost( target );
+    bool worn = is_worn( target );
+    mv += item_handling_cost( target, true, worn ? INVENTORY_HANDLING_PENALTY / 2 : INVENTORY_HANDLING_PENALTY );
 
-    if( is_worn( target ) ) {
+    if( worn ) {
         target.on_takeoff( *this );
-    } else {
-        mv *= INVENTORY_HANDLING_FACTOR;
     }
 
+    add_msg( m_debug, "wielding took %d moves", mv );
     moves -= mv;
 
     if( has_item( target ) ) {
@@ -10095,13 +7747,13 @@ bool player::dispose_item( item_location &&obj, const std::string& prompt )
     opts.emplace_back( dispose_option {
         bucket ? _( "Spill contents and store in inventory" ) : _( "Store in inventory" ),
         volume_carried() + obj->volume() <= volume_capacity(), '1',
-        item_handling_cost( *obj ) * INVENTORY_HANDLING_FACTOR,
+        item_handling_cost( *obj ),
         [this, bucket, &obj] {
             if( bucket && !obj->spill_contents( *this ) ) {
                 return false;
             }
 
-            moves -= item_handling_cost( *obj ) * INVENTORY_HANDLING_FACTOR;
+            moves -= item_handling_cost( *obj );
             inv.add_item_keep_invlet( *obj );
             inv.unsort();
             obj.remove_item();
@@ -10265,9 +7917,19 @@ void player::mend_item( item_location&& obj, bool interactive )
     }
 }
 
-int player::item_handling_cost( const item& it, bool effects, int factor ) const {
-    // TODO: the volume (250 ml) should be part of the factor, provided by the caller
-    int mv = std::max( 1, it.volume() / 250_ml * factor );
+int player::item_handling_cost( const item& it, bool penalties, int base_cost ) const
+{
+    int mv = base_cost;
+    if( penalties ) {
+        // 40 moves per liter, up to 200 at 5 liters
+        mv += std::min( 200, it.volume() / 20_ml );
+    }
+
+    if( weapon.typeId() == "e_handcuffs" ) {
+        mv *= 4;
+    } else if( penalties && has_effect( effect_grabbed ) ) {
+        mv *= 2;
+    }
 
     // For single handed items use the least encumbered hand
     if( it.is_two_handed( *this ) ) {
@@ -10276,29 +7938,21 @@ int player::item_handling_cost( const item& it, bool effects, int factor ) const
         mv += std::min( encumb( bp_hand_l ), encumb( bp_hand_r ) );
     }
 
-    if( effects && has_effect( effect_grabbed ) ) {
-        mv *= 2;
-    }
-
-    if( weapon.typeId() == "e_handcuffs" ) {
-        mv *= 4;
-    }
-
     return std::min( std::max( mv, 0 ), MAX_HANDLING_COST );
 }
 
-int player::item_store_cost( const item& it, const item& /* container */, bool effects, int factor ) const
+int player::item_store_cost( const item& it, const item& /* container */, bool penalties, int base_cost ) const
 {
-    ///\EFFECT_PISTOL decreases time taken to store a pistol
-    ///\EFFECT_SMG decreases time taken to store an SMG
-    ///\EFFECT_RIFLE decreases time taken to store a rifle
-    ///\EFFECT_SHOTGUN decreases time taken to store a shotgun
-    ///\EFFECT_LAUNCHER decreases time taken to store a launcher
-    ///\EFFECT_STABBING decreases time taken to store a stabbing weapon
-    ///\EFFECT_CUTTING decreases time taken to store a cutting weapon
-    ///\EFFECT_BASHING decreases time taken to store a bashing weapon
+    /** @EFFECT_PISTOL decreases time taken to store a pistol */
+    /** @EFFECT_SMG decreases time taken to store an SMG */
+    /** @EFFECT_RIFLE decreases time taken to store a rifle */
+    /** @EFFECT_SHOTGUN decreases time taken to store a shotgun */
+    /** @EFFECT_LAUNCHER decreases time taken to store a launcher */
+    /** @EFFECT_STABBING decreases time taken to store a stabbing weapon */
+    /** @EFFECT_CUTTING decreases time taken to store a cutting weapon */
+    /** @EFFECT_BASHING decreases time taken to store a bashing weapon */
     int lvl = get_skill_level( it.is_gun() ? it.gun_skill() : it.melee_skill() );
-    return item_handling_cost( it, effects, factor ) / std::max( sqrt( ( lvl + 3 ) / 3 ), 1.0 );
+    return item_handling_cost( it, penalties, base_cost ) / ( ( lvl + 10.0f ) / 10.0f );
 }
 
 int player::item_reload_cost( const item& it, const item& ammo, long qty ) const
@@ -10320,34 +7974,36 @@ int player::item_reload_cost( const item& it, const item& ammo, long qty ) const
     if( obj.is_null() ) {
         obj = ammo;
     }
-    int mv = item_handling_cost( obj, qty );
+    // No base cost for handling ammo - that's already included in obtain cost
+    // We have the ammo in our hands right now
+    int mv = item_handling_cost( obj, true, 0 );
 
     if( ammo.has_flag( "MAG_BULKY" ) ) {
         mv *= 1.5; // bulky magazines take longer to insert
     }
 
-    if( !it.is_gun() && ! it.is_magazine() ) {
+    if( !it.is_gun() && !it.is_magazine() ) {
         return mv + 100; // reload a tool
     }
 
-    ///\EFFECT_GUN decreases the time taken to reload a magazine
-    ///\EFFECT_PISTOL decreases time taken to reload a pistol
-    ///\EFFECT_SMG decreases time taken to reload an SMG
-    ///\EFFECT_RIFLE decreases time taken to reload a rifle
-    ///\EFFECT_SHOTGUN decreases time taken to reload a shotgun
-    ///\EFFECT_LAUNCHER decreases time taken to reload a launcher
+    /** @EFFECT_GUN decreases the time taken to reload a magazine */
+    /** @EFFECT_PISTOL decreases time taken to reload a pistol */
+    /** @EFFECT_SMG decreases time taken to reload an SMG */
+    /** @EFFECT_RIFLE decreases time taken to reload a rifle */
+    /** @EFFECT_SHOTGUN decreases time taken to reload a shotgun */
+    /** @EFFECT_LAUNCHER decreases time taken to reload a launcher */
 
     int cost = ( it.is_gun() ? it.type->gun->reload_time : it.type->magazine->reload_time ) * qty;
 
     skill_id sk = it.is_gun() ? it.type->gun->skill_used : skill_gun;
-    mv += cost / ( 1 + std::min( double( get_skill_level( sk ) ) * 0.075, 0.75 ) );
+    mv += cost / ( 1.0f + std::min( float( get_skill_level( sk ) ) * 0.1f, 1.0f ) );
 
     if( it.has_flag( "STR_RELOAD" ) ) {
-        ///\EFFECT_STR reduces reload time of some weapons
+        /** @EFFECT_STR reduces reload time of some weapons */
         mv -= get_str() * 20;
     }
 
-    return std::max( mv, 0 );
+    return std::max( mv, 25 );
 }
 
 int player::item_wear_cost( const item& it ) const
@@ -10709,7 +8365,7 @@ hint_rating player::rate_action_use( const item &it ) const
         return it.ammo_sufficient() ? HINT_GOOD : HINT_IFFY;
 
     } else if (it.is_gunmod()) {
-        ///\EFFECT_GUN >0 allows rating estimates for gun modifications
+        /** @EFFECT_GUN >0 allows rating estimates for gun modifications */
         if (get_skill_level( skill_gun ) == 0) {
             return HINT_IFFY;
         } else {
@@ -10807,46 +8463,45 @@ bool player::consume_charges( item& used, long qty )
     return false;
 }
 
-void player::use(int inventory_position)
+void player::use( int inventory_position )
 {
-    item* used = &i_at(inventory_position);
+    item *used = &i_at( inventory_position );
     item copy;
 
-    if (used->is_null()) {
-        add_msg(m_info, _("You do not have that item."));
+    if( used->is_null() ) {
+        add_msg( m_info, _( "You do not have that item." ) );
         return;
     }
 
     last_item = used->typeId();
 
-    if (used->is_tool()) {
+    if( used->is_tool() ) {
         if( !used->type->has_use() ) {
             add_msg_if_player( _( "You can't do anything interesting with your %s." ), used->tname().c_str() );
             return;
         }
-
         invoke_item( used );
 
-    } else if (used->is_bionic()) {
+    } else if( used->is_bionic() ) {
         if( install_bionics( *used->type ) ) {
-            i_rem(inventory_position);
+            i_rem( inventory_position );
         }
 
     } else if( used->is_food() ||
                used->is_medication() ||
                used->get_contained().is_food() ||
                used->get_contained().is_medication() ) {
-        consume(inventory_position);
+        consume( inventory_position );
 
-    } else if (used->is_book()) {
-        read(inventory_position);
+    } else if( used->is_book() ) {
+        read( inventory_position );
 
     } else if ( used->type->has_use() ) {
         invoke_item( used );
 
     } else {
-        add_msg(m_info, _("You can't do anything interesting with your %s."),
-                used->tname().c_str());
+        add_msg( m_info, _( "You can't do anything interesting with your %s." ),
+                 used->tname().c_str() );
     }
 }
 
@@ -10883,7 +8538,7 @@ bool player::invoke_item( item* used, const tripoint &pt )
     const std::string &method = std::next( used->type->use_methods.begin(), choice )->first;
     long charges_used = used->type->invoke( this, used, pt, method );
 
-    return used->is_tool() && consume_charges( *used, charges_used );
+    return ( used->is_tool() || used->is_medication() || used->is_container() ) && consume_charges( *used, charges_used );
 }
 
 bool player::invoke_item( item* used, const std::string &method )
@@ -10904,7 +8559,7 @@ bool player::invoke_item( item* used, const std::string &method, const tripoint 
     }
 
     long charges_used = actually_used->type->invoke( this, actually_used, pt, method );
-    return used->is_tool() && consume_charges( *actually_used, charges_used );
+    return ( used->is_tool() || used->is_medication() || used->is_container() ) && consume_charges( *actually_used, charges_used );
 }
 
 void player::reassign_item( item &it, long invlet )
@@ -10912,25 +8567,20 @@ void player::reassign_item( item &it, long invlet )
     if( invlet ) {
         item &prev = i_at( invlet_to_position( invlet ) );
         if( !prev.is_null() ) {
-            prev.invlet = it.invlet;
-        }
-    }
-
-    if( !invlet || it.invlet == invlet ) {
-        const auto iter = assigned_invlet.find( it.invlet );
-        if( iter != assigned_invlet.end() ) {
-            assigned_invlet.erase( iter );
-            if( invlet ) {
-                return;
-            }
+            inv.reassign_item( prev, it.invlet );
         }
     }
 
     if( !invlet || inv_chars.valid( invlet ) ) {
-        it.invlet = invlet;
-        if( invlet ) {
+        const auto iter = assigned_invlet.find( it.invlet );
+        bool found = iter != assigned_invlet.end();
+        if( found ) {
+            assigned_invlet.erase( iter );
+        }
+        if( invlet && ( !found || it.invlet != invlet ) ) {
             assigned_invlet[invlet] = it.typeId();
         }
+        inv.reassign_item( it, invlet );
     }
 }
 
@@ -11584,7 +9234,7 @@ void player::do_read( item *book )
             const int originalSkillLevel = skill_level;
 
             // Calculate experience gained
-            ///\EFFECT_INT increases reading comprehension
+            /** @EFFECT_INT increases reading comprehension */
             int min_ex = std::max( 1, reading->time / 10 + learner->get_int() / 4 );
             int max_ex = reading->time /  5 + learner->get_int() / 2 - originalSkillLevel;
             if( max_ex < 2 ) {
@@ -12902,12 +10552,12 @@ std::string player::weapname() const
     }
 }
 
-bool player::wield_contents( item *container, int pos, int factor, bool effects )
+bool player::wield_contents( item &container, int pos, bool penalties, int base_cost )
 {
     // if index not specified and container has multiple items then ask the player to choose one
     if( pos < 0 ) {
         std::vector<std::string> opts;
-        std::transform( container->contents.begin(), container->contents.end(),
+        std::transform( container.contents.begin(), container.contents.end(),
                         std::back_inserter( opts ), []( const item& elem ) {
                             return elem.display_name();
                         } );
@@ -12918,12 +10568,12 @@ bool player::wield_contents( item *container, int pos, int factor, bool effects 
         }
     }
 
-    if( pos >= static_cast<int>(container->contents.size() ) ) {
+    if( pos >= static_cast<int>(container.contents.size() ) ) {
         debugmsg( "Tried to wield non-existent item from container (player::wield_contents)" );
         return false;
     }
 
-    auto target = std::next( container->contents.begin(), pos );
+    auto target = std::next( container.contents.begin(), pos );
     if( !can_wield( *target ) ) {
         return false;
     }
@@ -12938,22 +10588,24 @@ bool player::wield_contents( item *container, int pos, int factor, bool effects 
     }
 
     weapon = std::move( *target );
-    container->contents.erase( target );
-    container->on_contents_changed();
+    container.contents.erase( target );
+    container.on_contents_changed();
 
     inv.assign_empty_invlet( weapon, true );
     last_item = weapon.typeId();
 
-    ///\EFFECT_PISTOL decreases time taken to draw pistols from holsters
-    ///\EFFECT_SMG decreases time taken to draw smgs from holsters
-    ///\EFFECT_RIFLE decreases time taken to draw rifles from holsters
-    ///\EFFECT_SHOTGUN decreases time taken to draw shotguns from holsters
-    ///\EFFECT_LAUNCHER decreases time taken to draw launchers from holsters
-    ///\EFFECT_STABBING decreases time taken to draw stabbing weapons from sheathes
-    ///\EFFECT_CUTTING decreases time taken to draw cutting weapons from scabbards
-    ///\EFFECT_BASHING decreases time taken to draw bashing weapons from holsters
+    /**
+     * @EFFECT_PISTOL decreases time taken to draw pistols from holsters
+     * @EFFECT_SMG decreases time taken to draw smgs from holsters
+     * @EFFECT_RIFLE decreases time taken to draw rifles from holsters
+     * @EFFECT_SHOTGUN decreases time taken to draw shotguns from holsters
+     * @EFFECT_LAUNCHER decreases time taken to draw launchers from holsters
+     * @EFFECT_STABBING decreases time taken to draw stabbing weapons from sheathes
+     * @EFFECT_CUTTING decreases time taken to draw cutting weapons from scabbards
+     * @EFFECT_BASHING decreases time taken to draw bashing weapons from holsters
+     */
     int lvl = get_skill_level( weapon.is_gun() ? weapon.gun_skill() : weapon.melee_skill() );
-    mv += item_handling_cost( weapon, effects, factor ) / std::max( sqrt( ( lvl + 3 ) / 3 ), 1.0 );
+    mv += item_handling_cost( weapon, penalties, base_cost ) / ( ( lvl + 10.0f ) / 10.0f );
 
     moves -= mv;
 
@@ -12962,10 +10614,10 @@ bool player::wield_contents( item *container, int pos, int factor, bool effects 
     return true;
 }
 
-void player::store(item* container, item* put, int factor, bool effects)
+void player::store( item& container, item& put, bool penalties, int base_cost )
 {
-    moves -= item_store_cost( *put, *container, factor, effects );
-    container->put_in( i_rem( put ) );
+    moves -= item_store_cost( put, container, penalties, base_cost );
+    container.put_in( i_rem( &put ) );
 }
 
 nc_color encumb_color(int level)
@@ -13632,6 +11284,7 @@ std::vector<std::string> player::get_overlay_ids() const
 
 void player::spores()
 {
+    fungal_effects fe( *g, g->m );
     //~spore-release sound
     sounds::sound( pos(), 10, _("Pouf!"));
     for (int i = -1; i <= 1; i++) {
@@ -13641,7 +11294,7 @@ void player::spores()
             }
 
             tripoint sporep( posx() + i, posy() + j, posz() );
-            g->m.fungalize( sporep, this, 0.25 );
+            fe.fungalize( sporep, this, 0.25 );
         }
     }
 }
@@ -13777,6 +11430,20 @@ void player::on_mission_finished( mission &mission )
     }
 }
 
+const targeting_data &player::get_targeting_data() {
+    if( tdata.get() == nullptr ) {
+        debugmsg( "Tried to get targeting data before setting it" );
+        tdata.reset( new targeting_data() );
+        tdata->relevant = nullptr;
+    }
+
+    return *tdata;
+}
+
+void player::set_targeting_data( const targeting_data &td ) {
+    tdata.reset( new targeting_data( td ) );
+}
+
 void player::set_active_mission( mission &mission )
 {
     const auto iter = std::find( active_missions.begin(), active_missions.end(), &mission );
@@ -13813,90 +11480,6 @@ std::vector<mission*> player::get_completed_missions() const
 std::vector<mission*> player::get_failed_missions() const
 {
     return failed_missions;
-}
-
-// Rescale temperature value to one that the player sees
-int temperature_print_rescaling( int temp )
-{
-    return ( temp / 100.0 ) * 2 - 100;
-}
-
-bool should_combine_bps( const player &p, size_t l, size_t r )
-{
-    const auto enc_data = p.get_encumbrance();
-    return enc_data[l] == enc_data[r] &&
-        temperature_print_rescaling( p.temp_conv[l] ) == temperature_print_rescaling( p.temp_conv[r] );
-}
-
-void player::print_encumbrance( WINDOW *win, int line, item *selected_clothing ) const
-{
-    int height, width;
-    getmaxyx( win, height, width );
-    int orig_line = line;
-
-    // fill a set with the indices of the body parts to display
-    line = std::max( 0, line );
-    std::set<int> parts;
-    // check and optionally enqueue line+0, -1, +1, -2, +2, ...
-    int off = 0; // offset from line
-    int skip[2] = {}; // how far to skip on next neg/pos jump
-    do {
-        if( !skip[off > 0] && line + off >= 0 && line + off < num_bp ) { // line+off is in bounds
-            parts.insert( line + off );
-            if( line + off != ( int )bp_aiOther[line + off] &&
-                should_combine_bps( *this, line + off, bp_aiOther[line + off] ) ) { // part of a pair
-                skip[( int )bp_aiOther[line + off] > line + off ] = 1; // skip the next candidate in this direction
-            }
-        } else {
-            skip[off > 0] = 0;
-        }
-        if( off < 0 ) {
-            off = -off;
-        } else {
-            off = -off - 1;
-        }
-    } while( off > -num_bp && ( int )parts.size() < height - 1 );
-
-    std::string out;
-    /*** I chose to instead only display X+Y instead of X+Y=Z. More room was needed ***
-     *** for displaying triple digit encumbrance, due to new encumbrance system.    ***
-     *** If the player wants to see the total without having to do them maths, the  ***
-     *** armor layers ui shows everything they want :-) -Davek                      ***/
-    int row = 1;
-    const auto enc_data = get_encumbrance();
-    for( auto bp : parts ) {
-        const encumbrance_data &e = enc_data[bp];
-        bool highlighted = ( selected_clothing == nullptr ) ? false :
-            ( selected_clothing->covers( static_cast<body_part>( bp ) ) );
-        bool combine = should_combine_bps( *this, bp, bp_aiOther[bp] );
-        out.clear();
-        // limb, and possible color highlighting
-        out = string_format( "%-7s", body_part_name_as_heading( bp_aBodyPart[bp], combine ? 2 : 1 ).c_str() );
-        // Two different highlighting schemes, highlight if the line is selected as per line being set.
-        // Make the text green if this part is covered by the passed in item.
-        int limb_color = ( orig_line == bp ) ?
-            ( highlighted ? h_green : h_ltgray ) :
-            ( highlighted ? c_green : c_ltgray );
-        mvwprintz( win, row, 1, limb_color, out.c_str() );
-        // take into account the new encumbrance system for layers
-        out = string_format( "(%1d) ", static_cast<int>( e.layer_penalty / 10.0 ) );
-        wprintz( win, c_ltgray, out.c_str() );
-        // accumulated encumbrance from clothing, plus extra encumbrance from layering
-        wprintz( win, encumb_color( e.encumbrance ), string_format( "%3d", e.armor_encumbrance ).c_str() );
-        // seperator in low toned color
-        wprintz( win, c_ltgray, "+" );
-        wprintz( win, encumb_color( e.encumbrance ), string_format( "%-3d", e.encumbrance - e.armor_encumbrance ).c_str() );
-        // print warmth, tethered to right hand side of the window
-        out = string_format( "(% 3d)", temperature_print_rescaling( temp_conv[bp] ) );
-        mvwprintz( win, row, getmaxx( win ) - 6, bodytemp_color( bp ), out.c_str() );
-        row++;
-    }
-
-    if( off > -num_bp ) { // not every body part fit in the window
-        //TODO: account for skipped paired body parts in scrollbar math
-        draw_scrollbar( win, std::max( orig_line, 0 ), height - 1, num_bp, 1 );
-    }
-
 }
 
 bool player::query_yn( const char *mes, ... ) const

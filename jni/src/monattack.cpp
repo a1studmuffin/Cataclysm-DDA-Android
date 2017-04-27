@@ -3,6 +3,7 @@
 #include "game.h"
 #include "debug.h"
 #include "map.h"
+#include "fungal_effects.h"
 #include "rng.h"
 #include "line.h"
 #include "bodypart.h"
@@ -1451,6 +1452,7 @@ bool mattack::fungus(monster *z)
         }
     }
 
+    fungal_effects fe( *g, g->m );
     for (int i = -radius; i <= radius; i++) {
         for (int j = -radius; j <= radius; j++) {
             if( i == 0 && j == 0 ) {
@@ -1465,7 +1467,7 @@ bool mattack::fungus(monster *z)
                 continue;
             }
 
-            g->m.fungalize( sporep, z, spore_chance );
+            fe.fungalize( sporep, z, spore_chance );
         }
     }
 
@@ -1957,8 +1959,9 @@ bool mattack::dermatik_growth(monster *z)
 
 bool mattack::plant( monster *z)
 {
+    fungal_effects fe( *g, g->m );
     // Spores taking seed and growing into a fungaloid
-    if( !g->spread_fungus( z->pos() ) && one_in( 10 + g->num_zombies() / 5 ) ) {
+    if( !fe.spread_fungus( z->pos() ) && one_in( 10 + g->num_zombies() / 5 ) ) {
         if( g->u.sees( *z ) ) {
             add_msg(m_warning, _("The %s takes seed and becomes a young fungaloid!"),
                     z->name().c_str());
@@ -1974,7 +1977,7 @@ bool mattack::plant( monster *z)
         }
         z->set_hp( 0 );
         // Try fungifying once again
-        g->spread_fungus( z->pos() );
+        fe.spread_fungus( z->pos() );
         return true;
     }
 }
@@ -3211,26 +3214,31 @@ bool mattack::chickenbot(monster *z)
     }
 
     int dist = rl_dist( z->pos(), target->pos() );
-    if( dist == 1 && one_in(2) ) {
+    int player_dist = rl_dist( target->pos(), g->u.pos() );
+    if( dist == 1 && one_in( 2 ) ) {
+        // Use tazer at point-blank range, and even then, not continuously.
         mode = 1;
-    } else if( ( dist >= 12) ||
-               ( ( z->friendly != 0 || g->u.in_vehicle ) && dist >= 6 ) ||
-               cap > 2 ) {
+    } else if( ( z->friendly == 0 || player_dist >= 6 ) &&
+               // Avoid shooting near player if we're friendly.
+               ( dist >= 12 || ( g->u.in_vehicle && dist >= 6 ) ) ) {
+               // Only use at long range, unless player is in a vehicle, then tolerate closer targeting.
         mode = 3;
-    } else if( dist >= 4) {
+    } else if( dist >= 4 ) {
+        // Don't use machine gun at very close range, under the assumption that targets at that range can dodge?
         mode = 2;
     }
 
-    if (mode == 0) {
+    if( mode == 0 ) {
         return false;    // No attacks were valid!
     }
 
     if( mode > cap ) {
         mode = cap;
     }
-    switch (mode) {
+    switch( mode ) {
     case 0:
     case 1:
+        // If we downgraded to taze, but are out of range, don't act.
         if( dist <= 1 ) {
             taze( z, target );
         }
@@ -3241,7 +3249,7 @@ bool mattack::chickenbot(monster *z)
         }
         break;
     case 3:
-        if( dist == 38 ) {
+        if( dist <= 38 ) {
             frag( z, target );
         }
         break;

@@ -17,6 +17,7 @@
 #include "mtype.h"
 #include "field.h"
 #include "sounds.h"
+#include "gates.h"
 
 #include <algorithm>
 
@@ -628,7 +629,7 @@ void npc::execute_action( npc_action action )
                 my_spot = priority;
             }
 
-            seats.push_back( std::make_pair( priority, p2 ) );
+            seats.push_back( std::make_pair( priority, static_cast<int>( p2 ) ) );
         }
 
         if( my_spot >= 3 ) {
@@ -1260,42 +1261,17 @@ int npc::confident_gun_mode_range( const item::gun_mode &gun, int at_recoil ) co
         return 0;
     }
 
-    double deviation = get_weapon_dispersion( *gun.target ) + at_recoil;
-    // Halve to get expected values
-    deviation /= 2;
-    // Convert from MoA back to quarter-degrees.
-    deviation /= 15;
-
-    int ret = std::min( int( confidence_mult() * 360 / deviation ), gun->gun_range( this ) );
-
+    double ret = gun_current_range( *gun.target, at_recoil, 50 / confidence_mult(), accuracy_goodhit );
     // 5 round burst equivalent to ~2 individually aimed shots
     ret /= std::max( sqrt( gun.qty / 1.5 ), 1.0 );
 
-    add_msg( m_debug, "confident_gun_mode_range (%s=%d)", gun.mode.c_str(), ret );
-    return std::max( ret, 1 );
+    add_msg( m_debug, "confident_gun_mode_range (%s=%d)", gun.mode.c_str(), (int)ret );
+    return std::max<int>( ret, 1 );
 }
 
-int npc::confident_throw_range( const item &thrown ) const
+int npc::confident_throw_range( const item &thrown, Creature *target ) const
 {
-    ///\EFFECT_THROW_NPC increases throwing confidence of all items
-    double deviation = 10 - get_skill_level( skill_throw );
-
-    ///\EFFECT_PER_NPC increases throwing confidence of all items
-    deviation += 10 - per_cur;
-
-    ///\EFFECT_DEX_NPC increases throwing confidence of all items
-    deviation += throw_dex_mod();
-
-    ///\EFFECT_STR_NPC increases throwing confidence of heavy items
-    deviation += std::min( ( thrown.weight() / 100 ) - str_cur, 0 );
-
-    deviation += thrown.volume() / units::legacy_volume_factor / 4;
-
-    deviation += encumb( bp_hand_r ) + encumb( bp_hand_l ) + encumb( bp_eyes );
-
-    deviation = std::max( 1.0, deviation );
-
-    const int ret = std::min( int( confidence_mult() * 360 / deviation ), throw_range( thrown ) );
+    const int ret = thrown_current_range( thrown, 50 / confidence_mult(), accuracy_goodhit, target );
     add_msg( m_debug, "confident_throw_range == %d", ret );
     return ret;
 }
@@ -1304,7 +1280,7 @@ int npc::confident_throw_range( const item &thrown ) const
 bool npc::wont_hit_friend( const tripoint &tar, const item &it, bool throwing ) const
 {
     // @todo Get actual dispersion instead of extracting it (badly) from confident range
-    int confident = throwing ? confident_throw_range( it ) : confident_shoot_range( it );
+    int confident = throwing ? confident_throw_range( it, nullptr ) : confident_shoot_range( it );
     // if there is no confidence at using weapon, it's not used at range
     // zero confidence leads to divide by zero otherwise
     if( confident < 1 ) {
@@ -1579,24 +1555,17 @@ void npc::move_to( const tripoint &pt, bool no_bashing )
     }
 
     if( moved ) {
+        const tripoint old_pos = pos();
+        setpos( p );
         if( in_vehicle ) {
-            g->m.unboard_vehicle( pos() );
+            g->m.unboard_vehicle( old_pos );
         }
 
         // Close doors behind self (if you can)
         if( is_friend() && rules.close_doors ) {
-            if( veh != nullptr ) {
-                vpart = veh->next_part_to_close( vpart );
-                if( vpart >= 0 ) {
-                    veh->close( vpart );
-                    mod_moves( -90 );
-                }
-            } else if( g->m.close_door( pos(), !g->m.is_outside( p ), false ) ) {
-                mod_moves( -90 );
-            }
+            doors::close_door( g->m, *this, old_pos );
         }
 
-        setpos( p );
         int part;
         vehicle *veh = g->m.veh_at( p, part );
         if( veh != nullptr && veh->part_with_feature( part, VPFLAG_BOARDABLE ) >= 0 ) {
@@ -2421,7 +2390,7 @@ bool npc::alt_attack()
     }
 
     // We are throwing it!
-    int conf = confident_throw_range( *used );
+    int conf = confident_throw_range( *used, critter );
     const bool wont_hit = wont_hit_friend( tar, *used, true );
     if( dist <= conf && wont_hit ) {
         npc_throw( *this, *used, weapon_index, tar );
@@ -2551,7 +2520,9 @@ void npc::heal_self()
     }
 
     long charges_used = used.type->invoke( this, &used, pos(), "heal" );
-    consume_charges( used, charges_used );
+    if( used.is_medication() ) {
+        consume_charges( used, charges_used );
+    }
 }
 
 void npc::use_painkiller()
@@ -2848,8 +2819,9 @@ void npc::reach_destination()
         // No point recalculating the path to get home
         move_to_next();
     } else if( guard_pos != no_goal_point ) {
-        const tripoint dest( guard_pos.x - mapx * SEEX,
-                             guard_pos.y - mapy * SEEY,
+        const tripoint sm_dir = goal - submap_coords;
+        const tripoint dest( sm_dir.x * SEEX + guard_pos.x - posx(),
+                             sm_dir.y * SEEY + guard_pos.y - posy(),
                              guard_pos.z );
         update_path( dest );
         move_to_next();

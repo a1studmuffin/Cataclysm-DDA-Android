@@ -1,3 +1,4 @@
+#pragma once
 #ifndef OMDATA_H
 #define OMDATA_H
 
@@ -43,7 +44,7 @@ const size_t bits = size_t( -1 ) >> ( CHAR_BIT *sizeof( size_t ) - size );
 /** Identifier for serialization purposes. */
 const std::string &id( type dir );
 
-/** Human readable name of @param dir. */
+/** Get Human readable name of a direction */
 const std::string &name( type dir );
 
 /** Various rotations. */
@@ -51,10 +52,15 @@ point rotate( const point &p, type dir );
 tripoint rotate( const tripoint &p, type dir );
 long rotate_symbol( long sym, type dir );
 
-/** Returns point(0, 0) displaced in direction @param dir by the @param dist. */
+/** Returns point(0, 0) displaced in specified direction by a specified distance
+ * @param dir Direction of displacement
+ * @param dist Distance of displacement
+ */
 point displace( type dir, int dist = 1 );
 
-/** Returns a sum of @param dir1 and @param dir2. */
+/** Returns a sum of two numbers
+ *  @param dir1 first number
+ *  @param dir2 second number */
 type add( type dir1, type dir2 );
 
 /** Turn by 90 degrees to the left, to the right, or randomly (either left or right). */
@@ -106,12 +112,12 @@ struct overmap_static_spawns : public overmap_spawns {
 
 //terrain flags enum! this is for tracking the indices of each flag.
 enum oter_flags {
-    known_down = 0,
+    allow_override = 0,
+    known_down,
     known_up,
+    no_rotate,    // this tile doesn't have four rotated versions (north, east, south, west)
     river_tile,
     has_sidewalk,
-    allow_road,
-    rotates,      // does this tile have four versions, one for each direction?
     line_drawing, // does this tile have 8 versions, including straights, bends, tees, and a fourway?
     num_oter_flags
 };
@@ -152,6 +158,10 @@ struct oter_type_t {
         void load( JsonObject &jo, const std::string &src );
         void check() const;
         void finalize();
+
+        bool is_rotatable() const {
+            return !has_flag( no_rotate ) && !has_flag( line_drawing );
+        }
 
     private:
         std::bitset<num_oter_flags> flags;
@@ -225,6 +235,12 @@ struct oter_t {
             return type->has_flag( flag );
         }
 
+        bool is_hardcoded() const;
+
+        bool is_rotatable() const {
+            return type->is_rotatable();
+        }
+
     private:
         om_direction::type dir = om_direction::type::none;
         long sym = '\0';         // This is a long, so we can support curses linedrawing.
@@ -295,12 +311,12 @@ class overmap_special
         const overmap_special_terrain &get_terrain_at( const tripoint &p ) const;
         /**
          * Returns whether the special can be placed on the specified terrain.
-         * It's true if @ref oter meets any of @ref locations.
+         * It's true if oter meets any of locations.
          */
         bool can_be_placed_on( const oter_id &oter ) const;
-        /** Returns whether this special requires a city at all. */
+        /** @returns true if this special requires a city */
         bool requires_city() const;
-        /** Returns whether the special at @ref p can belong to the specified city. */
+        /** @returns whether the special at specified tripoint can belong to the specified city. */
         bool can_belong_to_city( const tripoint &p, const city &cit ) const;
 
         string_id<overmap_special> id;

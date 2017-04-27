@@ -4,6 +4,7 @@
 #include "omdata.h"
 #include "output.h"
 #include "game.h"
+#include "fungal_effects.h"
 #include "rng.h"
 #include "line.h"
 #include "debug.h"
@@ -176,8 +177,6 @@ void map::generate(const int x, const int y, const int z, const int turn)
     const auto &spawns = terrain_type->get_static_spawns();
     if( spawns.group && x_in_y( spawns.chance, 100 ) ) {
         int pop = rng( spawns.population.min, spawns.population.max );
-        // place_spawns currently depends on the STATIC_SPAWN world option, this
-        // must bypass it.
         for( ; pop > 0; pop-- ) {
             MonsterGroupResult spawn_details = MonsterGroupManager::GetResultFromGroup( spawns.group, &pop );
             if( !spawn_details.name ) {
@@ -1198,7 +1197,7 @@ void jmapgen_objects::load_objects( JsonObject &jsi, const std::string &member_n
 }
 
 template<typename PieceType>
-void load_place_mapings( JsonObject jobj, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings( JsonObject jobj, mapgen_palette::placing_map::mapped_type &vect )
 {
     vect.emplace_back( new PieceType( jobj ) );
 }
@@ -1212,7 +1211,7 @@ an overload below.
 The mapgen piece is loaded from the member of the json object named key.
 */
 template<typename PieceType>
-void load_place_mapings( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     if( pjo.has_object( key ) ) {
         load_place_mapings<PieceType>( pjo.get_object( key ), vect );
@@ -1229,7 +1228,7 @@ This function allows loading the mapgen pieces from a single string, *or* a json
 The mapgen piece is loaded from the member of the json object named key.
 */
 template<typename PieceType>
-void load_place_mapings_string( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings_string( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     if( pjo.has_string( key ) ) {
         try {
@@ -1262,7 +1261,7 @@ instance of jmapgen_alternativly which will chose the mapgen piece to apply to t
 Use this with terrain or traps or other things that can not be applied twice to the same place.
 */
 template<typename PieceType>
-void load_place_mapings_alternatively( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings_alternatively( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     if( !pjo.has_array( key ) ) {
         load_place_mapings_string<PieceType>( pjo, key, vect );
@@ -1287,25 +1286,25 @@ void load_place_mapings_alternatively( JsonObject &pjo, const std::string &key, 
 }
 
 template<>
-void load_place_mapings<jmapgen_trap>( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings<jmapgen_trap>( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     load_place_mapings_alternatively<jmapgen_trap>( pjo, key, vect );
 }
 
 template<>
-void load_place_mapings<jmapgen_furniture>( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings<jmapgen_furniture>( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     load_place_mapings_alternatively<jmapgen_furniture>( pjo, key, vect );
 }
 
 template<>
-void load_place_mapings<jmapgen_terrain>( JsonObject &pjo, const std::string &key, mapgen_function_json::placing_map::mapped_type &vect )
+void load_place_mapings<jmapgen_terrain>( JsonObject &pjo, const std::string &key, mapgen_palette::placing_map::mapped_type &vect )
 {
     load_place_mapings_alternatively<jmapgen_terrain>( pjo, key, vect );
 }
 
 template<typename PieceType>
-void mapgen_function_json::load_place_mapings( JsonObject &jo, const std::string &member_name, placing_map &format_placings )
+void mapgen_palette::load_place_mapings( JsonObject &jo, const std::string &member_name, placing_map &format_placings )
 {
     if( jo.has_object( "mapping" ) ) {
         JsonObject pjo = jo.get_object( "mapping" );
@@ -1325,7 +1324,7 @@ void mapgen_function_json::load_place_mapings( JsonObject &jo, const std::string
         return;
     }
     /* This is kind of a hack. Loading furniture/terrain from `jo` is already done in
-     * mapgen_function_json::setup, continuing here would load it again and cause trouble.
+     * mapgen_palette::load_temp, continuing here would load it again and cause trouble.
      */
     if( member_name == "terrain" || member_name == "furniture" ) {
         return;
@@ -1338,6 +1337,132 @@ void mapgen_function_json::load_place_mapings( JsonObject &jo, const std::string
         auto &vect = format_placings[ key[0] ];
         ::load_place_mapings<PieceType>( pjo, key, vect );
     }
+}
+
+std::map<std::string, mapgen_palette> palettes;
+
+mapgen_palette mapgen_palette::load_temp( JsonObject &jo, const std::string &src )
+{
+    return load_internal( jo, src, false, true );
+}
+
+void mapgen_palette::load( JsonObject &jo, const std::string &src )
+{
+    mapgen_palette ret = load_internal( jo, src, true, false );
+    if( ret.id.empty() ) {
+        jo.throw_error( "Named palette needs an id" );
+    }
+
+    palettes[ ret.id ] = ret;
+}
+
+const mapgen_palette &mapgen_palette::get( const palette_id &id )
+{
+    const auto iter = palettes.find( id );
+    if( iter != palettes.end() ) {
+        return iter->second;
+    }
+
+    debugmsg( "Requested palette with unknown id %s", id.c_str() );
+    static mapgen_palette dummy;
+    return dummy;
+}
+
+void mapgen_palette::add( const palette_id &rh )
+{
+    add( get( rh ) );
+}
+
+void mapgen_palette::add( const mapgen_palette &rh )
+{
+    for( auto &placing : rh.format_placings ) {
+        format_placings[ placing.first ] = placing.second;
+    }
+    for( auto &placing : rh.format_terrain ) {
+        format_terrain[ placing.first ] = placing.second;
+    }
+    for( auto &placing : rh.format_furniture ) {
+        format_furniture[ placing.first ] = placing.second;
+    }
+}
+
+mapgen_palette mapgen_palette::load_internal( JsonObject &jo, const std::string &, bool require_id, bool allow_recur )
+{
+    mapgen_palette new_pal;
+    auto &format_placings = new_pal.format_placings;
+    auto &format_terrain = new_pal.format_terrain;
+    auto &format_furniture = new_pal.format_furniture;
+    if( require_id ) {
+        new_pal.id = jo.get_string( "id" );
+    }
+
+    if( jo.has_array( "palettes" ) ) {
+        if( allow_recur ) {
+            auto pals = jo.get_string_array( "palettes" );
+            for( auto &p : pals ) {
+                new_pal.add( p );
+            }
+        } else {
+            jo.throw_error( "Recursive palettes are not implemented yet" );
+        }
+    }
+
+    // manditory: every character in rows must have matching entry, unless fill_ter is set
+    // "terrain": { "a": "t_grass", "b": "t_lava" }
+    if( jo.has_object("terrain") ) {
+        JsonObject pjo = jo.get_object("terrain");
+        for( const auto &key : pjo.get_member_names() ) {
+            if( key.size() != 1 ) {
+                pjo.throw_error( "format map key must be 1 character", key );
+            }
+            if( pjo.has_string( key ) ) {
+                format_terrain[key[0]] = ter_id( pjo.get_string( key ) );
+            } else {
+                auto &vect = format_placings[ key[0] ];
+                ::load_place_mapings<jmapgen_terrain>( pjo, key, vect );
+                if( !vect.empty() ) {
+                    // Dummy entry to signal that this terrain is actually defined, because
+                    // the code below checks that each square on the map has a valid terrain
+                    // defined somehow.
+                    format_terrain[key[0]] = t_null;
+                }
+            }
+        }
+    }
+
+    if( jo.has_object("furniture") ) {
+        JsonObject pjo = jo.get_object("furniture");
+        for( const auto &key : pjo.get_member_names() ) {
+            if( key.size() != 1 ) {
+                pjo.throw_error( "format map key must be 1 character", key );
+            }
+            if( pjo.has_string( key ) ) {
+                format_furniture[key[0]] = furn_id( pjo.get_string( key ) );
+            } else {
+                auto &vect = format_placings[ key[0] ];
+                ::load_place_mapings<jmapgen_furniture>( pjo, key, vect );
+            }
+        }
+    }
+    new_pal.load_place_mapings<jmapgen_field>( jo, "fields", format_placings );
+    new_pal.load_place_mapings<jmapgen_npc>( jo, "npcs", format_placings );
+    new_pal.load_place_mapings<jmapgen_sign>( jo, "signs", format_placings );
+    new_pal.load_place_mapings<jmapgen_vending_machine>( jo, "vendingmachines", format_placings );
+    new_pal.load_place_mapings<jmapgen_toilet>( jo, "toilets", format_placings );
+    new_pal.load_place_mapings<jmapgen_gaspump>( jo, "gaspumps", format_placings );
+    new_pal.load_place_mapings<jmapgen_item_group>( jo, "items", format_placings );
+    new_pal.load_place_mapings<jmapgen_monster_group>( jo, "monsters", format_placings );
+    new_pal.load_place_mapings<jmapgen_vehicle>( jo, "vehicles", format_placings );
+    // json member name is not optimal, it should be plural like all the others above, but that conflicts
+    // with the items entry with refers to item groups.
+    new_pal.load_place_mapings<jmapgen_spawn_item>( jo, "item", format_placings );
+    new_pal.load_place_mapings<jmapgen_trap>( jo, "traps", format_placings );
+    new_pal.load_place_mapings<jmapgen_monster>( jo, "monster", format_placings );
+    new_pal.load_place_mapings<jmapgen_furniture>( jo, "furniture", format_placings );
+    new_pal.load_place_mapings<jmapgen_terrain>( jo, "terrain", format_placings );
+    new_pal.load_place_mapings<jmapgen_make_rubble>( jo, "rubble", format_placings );
+
+    return new_pal;
 }
 
 /*
@@ -1360,6 +1485,8 @@ bool mapgen_function_json::setup() {
         JsonArray sparray;
         JsonObject pjo;
 
+        // mapgensize = jo.get_int("mapgensize", 24); // eventually..
+
         // something akin to mapgen fill_background.
         if ( jo.read("fill_ter", tmpval) ) {
             fill_ter = tmpval.id();
@@ -1370,66 +1497,18 @@ bool mapgen_function_json::setup() {
         format.resize( mapgensize * mapgensize );
         // just like mapf::basic_bind("stuff",blargle("foo", etc) ), only json input and faster when applying
         if ( jo.has_array("rows") ) {
-            placing_map format_placings;
-            std::map<int,ter_id> format_terrain;
-            std::map<int,furn_id> format_furniture;
-            // manditory: every character in rows must have matching entry, unless fill_ter is set
-            // "terrain": { "a": "t_grass", "b": "t_lava" }
-            if ( jo.has_object("terrain") ) {
-                pjo = jo.get_object("terrain");
-                for( const auto &key : pjo.get_member_names() ) {
-                    if( key.size() != 1 ) {
-                        pjo.throw_error( "format map key must be 1 character", key );
-                    }
-                    if( pjo.has_string( key ) ) {
-                        format_terrain[key[0]] = ter_id( pjo.get_string( key ) );
-                    } else {
-                        auto &vect = format_placings[ key[0] ];
-                        ::load_place_mapings<jmapgen_terrain>( pjo, key, vect );
-                        if( !vect.empty() ) {
-                            // Dummy entry to signal that this terrain is actually defined, because
-                            // the code below checks that each square on the map has a valid terrain
-                            // defined somehow.
-                            format_terrain[key[0]] = t_null;
-                        }
-                    }
-                }
-            } else {
+            mapgen_palette palette = mapgen_palette::load_temp( jo, "dda" );
+            auto &format_terrain = palette.format_terrain;
+            auto &format_furniture = palette.format_furniture;
+            auto &format_placings = palette.format_placings;
+
+            if( format_terrain.empty() ) {
                 jsin.error( "format: no terrain map" );
             }
-            if ( jo.has_object("furniture") ) {
-                pjo = jo.get_object("furniture");
-                for( const auto &key : pjo.get_member_names() ) {
-                    if( key.size() != 1 ) {
-                        pjo.throw_error( "format map key must be 1 character", key );
-                    }
-                    if( pjo.has_string( key ) ) {
-                        format_furniture[key[0]] = furn_id( pjo.get_string( key ) );
-                    } else {
-                        auto &vect = format_placings[ key[0] ];
-                        ::load_place_mapings<jmapgen_furniture>( pjo, key, vect );
-                    }
-                }
-            }
-            load_place_mapings<jmapgen_field>( jo, "fields", format_placings );
-            load_place_mapings<jmapgen_npc>( jo, "npcs", format_placings );
-            load_place_mapings<jmapgen_sign>( jo, "signs", format_placings );
-            load_place_mapings<jmapgen_vending_machine>( jo, "vendingmachines", format_placings );
-            load_place_mapings<jmapgen_toilet>( jo, "toilets", format_placings );
-            load_place_mapings<jmapgen_gaspump>( jo, "gaspumps", format_placings );
-            load_place_mapings<jmapgen_item_group>( jo, "items", format_placings );
-            load_place_mapings<jmapgen_loot>( jo, "loot", format_placings );
-            load_place_mapings<jmapgen_monster_group>( jo, "monsters", format_placings );
-            load_place_mapings<jmapgen_vehicle>( jo, "vehicles", format_placings );
-            // json member name is not optimal, it should be plural like all the others above, but that conflicts
-            // with the items entry with refers to item groups.
-            load_place_mapings<jmapgen_spawn_item>( jo, "item", format_placings );
-            load_place_mapings<jmapgen_trap>( jo, "traps", format_placings );
-            load_place_mapings<jmapgen_monster>( jo, "monster", format_placings );
-            load_place_mapings<jmapgen_furniture>( jo, "furniture", format_placings );
-            load_place_mapings<jmapgen_terrain>( jo, "terrain", format_placings );
-            load_place_mapings<jmapgen_make_rubble>( jo, "rubble", format_placings );
 
+            // mandatory: 24 rows of 24 character lines, each of which must have a matching key in "terrain",
+            // unless fill_ter is set
+            // "rows:" [ "aaaajustlikeinmapgen.cpp", "this.must!be!exactly.24!", "and_must_match_terrain_", .... ]
             parray = jo.get_array( "rows" );
             if ( parray.size() < mapgensize + y_offset ) {
                 parray.throw_error( string_format( "  format: rows: must have at least %d rows, not %d",
@@ -1443,14 +1522,16 @@ bool mapgen_function_json::setup() {
                 }
                 for ( size_t i = x_offset; i < mapgensize + x_offset; i++ ) {
                     const int tmpkey = tmpval[i];
-                    if ( format_terrain.find( tmpkey ) != format_terrain.end() ) {
-                        format[ calc_index( i - x_offset, c - y_offset ) ].ter = format_terrain[ tmpkey ];
+                    auto iter_ter = format_terrain.find( tmpkey );
+                    if ( iter_ter != format_terrain.end() ) {
+                        format[ calc_index( i - x_offset, c - y_offset ) ].ter = iter_ter->second;
                     } else if ( ! qualifies ) { // fill_ter should make this kosher
                         parray.throw_error( string_format( "  format: rows: row %d column %d: '%c' is not in 'terrain', and no 'fill_ter' is set!",
                                                            c + 1, i + 1, (char)tmpkey ) );
                     }
-                    if ( format_furniture.find( tmpkey ) != format_furniture.end() ) {
-                        format[ calc_index( i - x_offset, c - y_offset ) ].furn = format_furniture[ tmpkey ];
+                    auto iter_furn = format_furniture.find( tmpkey );
+                    if ( iter_furn != format_furniture.end() ) {
+                        format[ calc_index( i - x_offset, c - y_offset ) ].furn = iter_furn->second;
                     }
                     const auto fpi = format_placings.find( tmpkey );
                     if( fpi != format_placings.end() ) {
@@ -1658,7 +1739,7 @@ void mapgen_function_json::generate( map *m, const oter_id &terrain_type, const 
 
     m->rotate( rotation.get() );
 
-    if( terrain_type->has_flag(rotates) ) {
+    if( terrain_type->is_rotatable() ) {
         mapgen_rotate(m, terrain_type, false );
     }
 }
@@ -1722,7 +1803,6 @@ void map::draw_map(const oter_id terrain_type, const oter_id t_north, const oter
     static const mongroup_id GROUP_ZOMBIE( "GROUP_ZOMBIE" );
     static const mongroup_id GROUP_PUBLICWORKERS( "GROUP_PUBLICWORKERS" );
     static const mongroup_id GROUP_DOMESTIC( "GROUP_DOMESTIC" );
-    static const mongroup_id GROUP_SCHOOL( "GROUP_SCHOOL" );
     // Big old switch statement with a case for each overmap terrain type.
     // Many of these can be copied from another type, then rotated; for instance,
     //  "house_east" is identical to "house_north", just rotated 90 degrees to
@@ -1753,8 +1833,8 @@ void map::draw_map(const oter_id terrain_type, const oter_id t_north, const oter
     // To distinguish between types of labs
     bool ice_lab = true;
 
-    oter_id t_nesw[] = { t_north, t_east, t_south, t_west, t_neast, t_seast, t_swest, t_nwest };
-    int nesw_fac[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    std::array<oter_id, 8> t_nesw = {{ t_north, t_east, t_south, t_west, t_neast, t_seast, t_swest, t_nwest }};
+    std::array<int, 8> nesw_fac = {{ 0, 0, 0, 0, 0, 0, 0, 0 }};
     int &n_fac = nesw_fac[0], &e_fac = nesw_fac[1], &s_fac = nesw_fac[2], &w_fac = nesw_fac[3];
 
     mapgendata dat( t_north, t_east, t_south, t_west, t_neast, t_seast, t_swest, t_nwest, t_above, zlevel, rsettings, this );
@@ -2421,561 +2501,6 @@ ___DEEE|.R.|...,,...|sss\n",
                 if (x_in_y(1, 3)) {
                     add_vehicle( vproto_id( "car" ), 4, 6, 90);
                 }
-            }
-        }
-    } else if (terrain_type == "cathedral_1_entrance") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-ss         ##...........\n\
-ss         ##bbbb...bbbb\n\
-ss          #...........\n\
-ss          wbbbb...bbbb\n\
-ss          w...........\n\
-ss          wbbbb...bbbb\n\
-ss          #...........\n\
-ss         ##bbbb...bbbb\n\
-ss         ##...........\n\
-ss          #bbb....bbbb\n\
-ss          w...........\n\
-ss          #####GG###HH\n\
-ss          w>R.....#...\n\
-ss   ########...........\n\
-ss   #......#...........\n\
-ss   w......#.lllcc.....\n\
-ss   #......###ww####++#\n\
-ss   w......#      ##sss\n\
-ss   #......#       ssss\n\
-ss   ###ww###       ssss\n\
-ss                  ssss\n\
-ss                  ssss\n\
-ssssssssssssssssssssssss\n\
-ssssssssssssssssssssssss\n",
-                                   mapf::ter_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                           t_elevator, t_stairs_down, t_stairs_up, t_railing_v, t_rock, t_door_metal_locked, t_door_glass_c,
-                                           t_floor,   t_pavement_y, t_pavement, t_railing_h, t_wall_glass, t_wall_glass, t_console,
-                                           t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                           t_door_locked, t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_floor,
-                                           t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", f_bench,
-                                           f_null,     f_null,        f_null,      f_null,      f_null, f_null,              f_null,
-                                           f_crate_c, f_null,       f_null,     f_null,      f_null,         f_null,         f_null,    f_null,
-                                           f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,        f_null,
-                                           f_null,               f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                           f_locker, f_null));
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_bench) {
-                    place_items("church", 10,  i,  j, i,  j, false, 0);
-                }
-                if (this->furn(i, j) == f_locker) {
-                    place_items("jackets", 60,  i,  j, i,  j, false, 0);
-                }
-                if (this->ter(i, j) == t_window_stained_red) {
-                    if (one_in(3)) {
-                        ter_set(i, j, t_window_stained_blue);
-                    } else if (one_in(3)) {
-                        ter_set(i, j, t_window_stained_green);
-                    }
-                }
-            }
-        }
-        if (density > 1) {
-            place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-        } else {
-            place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-        }
-        if (t_north == "cathedral_1" && t_west == "cathedral_1") {
-            rotate(3);
-        } else if (t_north == "cathedral_1" && t_east == "cathedral_1") {
-            rotate(0);
-        } else if (t_south == "cathedral_1" && t_east == "cathedral_1") {
-            rotate(1);
-        } else if (t_west == "cathedral_1" && t_south == "cathedral_1") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "cathedral_1") {
-
-        // Init to grass & dirt;
-        dat.fill_groundcover();
-        if ((t_south == "cathedral_1_entrance" && t_east == "cathedral_1") || (t_north == "cathedral_1" &&
-                t_east == "cathedral_1_entrance") || (t_west == "cathedral_1" &&
-                        t_north == "cathedral_1_entrance") ||
-            (t_south == "cathedral_1" && t_west == "cathedral_1_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-                  ##    \n\
-                 ###wwww\n\
-                ##....tt\n\
-               ##.......\n\
-               w..h.....\n\
-             ###.....ttt\n\
-             w..........\n\
-      ##   ###R.........\n\
-    ####www#..rrrrrrrr..\n\
-  ###...................\n\
-  #...C.................\n\
- ##......bbbbbbb...bbbbb\n\
-  w.....................\n\
-  w..bbbbbbbbbbb...bbbbb\n\
-  w.....................\n\
- ##..bbbbbbbbbbb...bbbbb\n\
-  #.....................\n\
-  ###...................\n\
-    #####+##............\n\
-      ##sss##bbbb...bbbb\n\
-sssssssssss>#...........\n\
-sssssssssssswbbbb...bbbb\n\
-ss          w...........\n\
-ss          #bbbb...bbbb\n",
-                                       mapf::ter_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_railing_v, t_rock, t_door_metal_locked, t_door_glass_c,
-                                               t_floor,   t_pavement_y, t_pavement, t_railing_h, t_wall_glass, t_wall_glass, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_floor,
-                                               t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", f_bench,
-                                               f_null,     f_null,        f_null,      f_null,      f_null, f_null,              f_null,
-                                               f_crate_c, f_null,       f_null,     f_null,      f_null,         f_null,         f_null,    f_null,
-                                               f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,        f_null,
-                                               f_null,               f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                               f_locker, f_null));
-            spawn_item(20, 2, "brazier");
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_bench) {
-                        place_items("church", 10,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_locker) {
-                        place_items("jackets", 60,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->ter(i, j) == t_window_stained_red) {
-                        if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_blue);
-                        } else if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_green);
-                        }
-                    }
-                }
-            }
-            if (density > 1) {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-            } else {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-            }
-            if (t_west == "cathedral_1_entrance") {
-                rotate(1);
-            }
-            if (t_north == "cathedral_1_entrance") {
-                rotate(2);
-            }
-            if (t_east == "cathedral_1_entrance") {
-                rotate(3);
-            }
-        }
-
-        else if ((t_west == "cathedral_1_entrance" && t_north == "cathedral_1") ||
-                 (t_north == "cathedral_1_entrance" && t_east == "cathedral_1") || (t_west == "cathedral_1" &&
-                         t_south == "cathedral_1_entrance") ||
-                 (t_south == "cathedral_1" && t_east == "cathedral_1_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-..........##          ss\n\
-bbb...bbbb##          ss\n\
-..........#           ss\n\
-bbb...bbbbw           ss\n\
-..........w           ss\n\
-bbb...bbbbw           ss\n\
-..........#           ss\n\
-bbb...bbbb##          ss\n\
-..........##          ss\n\
-bbb....bbb#           ss\n\
-..........w           ss\n\
-H###GG#####           ss\n\
-..#.....R>w           ss\n\
-..........########    ss\n\
-..........#......#    ss\n\
-...ccccc..#......w    ss\n\
-++####ww###......#    ss\n\
-ss##      #......w    ss\n\
-sss       #......#    ss\n\
-sss       ###ww###    ss\n\
-sss                   ss\n\
-sss                   ss\n\
-ssssssssssssssssssssssss\n\
-ssssssssssssssssssssssss\n",
-                                       mapf::ter_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_railing_v, t_rock, t_door_metal_locked, t_door_glass_c,
-                                               t_floor,   t_pavement_y, t_pavement, t_railing_h, t_wall_glass, t_wall_glass, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_floor,
-                                               t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", f_bench,
-                                               f_null,     f_null,        f_null,      f_null,      f_null, f_null,              f_null,
-                                               f_crate_c, f_null,       f_null,     f_null,      f_null,         f_null,         f_null,    f_null,
-                                               f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,        f_null,
-                                               f_null,               f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                               f_locker, f_null));
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_bench) {
-                        place_items("church", 10,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_locker) {
-                        place_items("jackets", 60,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->ter(i, j) == t_window_stained_red) {
-                        if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_blue);
-                        } else if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_green);
-                        }
-                    }
-                }
-            }
-            if (density > 1) {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-            } else {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-            }
-            if (t_north == "cathedral_1_entrance") {
-                rotate(1);
-            }
-            if (t_east == "cathedral_1_entrance") {
-                rotate(2);
-            }
-            if (t_south == "cathedral_1_entrance") {
-                rotate(3);
-            }
-        }
-
-        else {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-   ##                   \n\
-www###                  \n\
-t....##                 \n\
-......##                \n\
-....h..w                \n\
-tt.....###              \n\
-.........w              \n\
-........R###   ##       \n\
-.rrrrrrrr..#www####     \n\
-..................###   \n\
-................C...#   \n\
-bbbb...bbbbbbb......##  \n\
-....................w   \n\
-bbbb...bbbbbbbbbbb..w   \n\
-....................w   \n\
-bbbb...bbbbbbbbbbb..##  \n\
-....................#   \n\
-..................###   \n\
-...........##+#####     \n\
-bbb...bbbb##sss##       \n\
-..........#>ssssssssssss\n\
-bbb...bbbbwsssssssssssss\n\
-..........w           ss\n\
-bbb...bbbb#           ss\n",
-                                       mapf::ter_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_railing_v, t_rock, t_door_metal_locked, t_door_glass_c,
-                                               t_floor,   t_pavement_y, t_pavement, t_railing_h, t_wall_glass, t_wall_glass, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_floor,
-                                               t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("b E > < R # X G C , _ r V H 6 x % ^ . - | t + = D w T S e o h c d l s", f_bench,
-                                               f_null,     f_null,        f_null,      f_null,      f_null, f_null,              f_null,
-                                               f_crate_c, f_null,       f_null,     f_null,      f_null,         f_null,         f_null,    f_null,
-                                               f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,        f_null,
-                                               f_null,               f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                               f_locker, f_null));
-            spawn_item(2, 2, "brazier");
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_bench) {
-                        place_items("church", 10,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->ter(i, j) == t_window_stained_red) {
-                        if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_blue);
-                        } else if (one_in(3)) {
-                            ter_set(i, j, t_window_stained_green);
-                        }
-                    }
-                }
-            }
-            if (density > 1) {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-            } else {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-            }
-            if (t_west == "cathedral_1" && t_north == "cathedral_1") {
-                rotate(1);
-            } else if (t_east == "cathedral_1" && t_north == "cathedral_1") {
-                rotate(2);
-            } else if (t_east == "cathedral_1" && t_south == "cathedral_1") {
-                rotate(3);
-            }
-        }
-
-
-    } else if (terrain_type == "cathedral_b_entrance") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-############|+|+|+|..|..\n\
-############|T|T|T|..|..\n\
-############|-|-|-|--|..\n\
-############|......d.|..\n\
-############|hdhd..dh|..\n\
-############|........|..\n\
-############|hdhd....+..\n\
-############|........|..\n\
-############|hdhd....|..\n\
-############|--------|..\n\
-############|..^tt^.....\n\
-############|...........\n\
-############|<..........\n\
-############|--D-|-+-ccc\n\
-############|l...|......\n\
-############|l..r|...ddd\n\
-############|l..r|....hd\n\
-############|----|------\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n",
-                                   mapf::ter_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                           t_elevator, t_stairs_down, t_stairs_up, t_rock, t_door_metal_locked, t_door_glass_c, t_floor,
-                                           t_pavement_y, t_pavement, t_floor, t_wall_glass, t_wall_glass, t_console, t_console_broken,
-                                           t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c, t_door_locked,
-                                           t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_column, t_floor,
-                                           t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", f_oven,
-                                           f_null,     f_null,        f_null,      f_null, f_null,              f_null,
-                                           f_makeshift_bed, f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                           f_null,           f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                           f_null,                 f_null,               f_toilet, f_sink,  f_fridge, f_null,   f_chair,
-                                           f_counter, f_desk,  f_locker, f_null));
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                }
-                if (this->furn(i, j) == f_rack) {
-                    place_items("cleaning", 70,  i,  j, i,  j, false, 0);
-                }
-                if (this->furn(i, j) == f_rack) {
-                    place_items("cleaning", 50,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (density > 1) {
-            place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-        } else {
-            place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-        }
-        if (t_north == "cathedral_b" && t_west == "cathedral_b") {
-            rotate(3);
-        } else if (t_north == "cathedral_b" && t_east == "cathedral_b") {
-            rotate(0);
-        } else if (t_south == "cathedral_b" && t_east == "cathedral_b") {
-            rotate(1);
-        } else if (t_west == "cathedral_b" && t_south == "cathedral_b") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "cathedral_b") {
-
-        // Init to grass & dirt;
-        dat.fill_groundcover();
-        if ((t_south == "cathedral_b_entrance" && t_east == "cathedral_b") || (t_north == "cathedral_b" &&
-                t_east == "cathedral_b_entrance") || (t_west == "cathedral_b" &&
-                        t_north == "cathedral_b_entrance") ||
-            (t_south == "cathedral_b" && t_west == "cathedral_b_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-########################\n\
-########################\n\
-####################____\n\
-###################__o__\n\
-###################_____\n\
-###################__o__\n\
-################________\n\
-################________\n\
-#######|---|______o___o_\n\
-#######|rrr|____________\n\
-#######|...D____________\n\
-######||-+-|------------\n\
-######|c....c.hhh.......\n\
-######|S....c.....C..C..\n\
-######|c....c...........\n\
-######|O....c.....C..C..\n\
-######|O....|...........\n\
-######|e....+.htth......\n\
-######|e...r|.htth......\n\
-######|---|-|.htth..ht..\n\
-##########|<+........t..\n\
-##########|-|--------|..\n\
-############|..S.S.S.|..\n\
-############|........+..\n",
-                                       mapf::ter_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_rock, t_door_metal_locked, t_door_glass_c, t_floor,
-                                               t_pavement_y, t_pavement, t_floor, t_wall_glass, t_wall_glass, t_console, t_console_broken,
-                                               t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c, t_door_locked,
-                                               t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_column, t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", f_oven,
-                                               f_null,     f_null,        f_null,      f_null, f_null,              f_null,
-                                               f_makeshift_bed, f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                               f_null,           f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                               f_null,                 f_null,               f_toilet, f_sink,  f_fridge, f_null,   f_chair,
-                                               f_counter, f_desk,  f_locker, f_null));
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_fridge) {
-                        place_items("fridge", 70,  i,  j, i,  j, false, 0);
-                    } else if (this->furn(i, j) == f_oven) {
-                        place_items("oven", 70,  i,  j, i,  j, false, 0);
-                    } else if (this->furn(i, j) == f_table) {
-                        place_items("fridgesnacks", 40,  i,  j, i,  j, false, 0);
-                    } else if (this->furn(i, j) == f_rack) {
-                        place_items("cannedfood", 40,  i,  j, i,  j, false, 0);
-                    }
-                }
-            }
-            add_spawn(mon_blank, rng(1, 3), 23, 5);
-            if (t_west == "cathedral_b_entrance") {
-                rotate(1);
-            } else if (t_north == "cathedral_b_entrance") {
-                rotate(2);
-            } else if (t_east == "cathedral_b_entrance") {
-                rotate(3);
-            }
-        }
-
-        else if ((t_west == "cathedral_b_entrance" && t_north == "cathedral_b") ||
-                 (t_north == "cathedral_b_entrance" && t_east == "cathedral_b") || (t_west == "cathedral_b" &&
-                         t_south == "cathedral_b_entrance") ||
-                 (t_south == "cathedral_b" && t_east == "cathedral_b_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-.|..|+|D|+|#############\n\
-.|..|T|T|T|#############\n\
-.|--|-|-|-|#############\n\
-.|........|#############\n\
-.|..htth..|#############\n\
-.|..htth..|#############\n\
-.+..htth..|#############\n\
-.|..htth..|#############\n\
-.|........|#############\n\
-.|--------|#############\n\
-...hhh...^|#############\n\
-..........|#############\n\
-.........<|#############\n\
-cc-|-D----|#############\n\
-...|^..dxd|#############\n\
-...+....hd|#############\n\
-.ll|l.....|#############\n\
----|------|#############\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n\
-########################\n",
-                                       mapf::ter_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_rock, t_door_metal_locked, t_door_glass_c, t_floor,
-                                               t_pavement_y, t_pavement, t_floor, t_wall_glass, t_wall_glass, t_console, t_console_broken,
-                                               t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c, t_door_locked,
-                                               t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_column, t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", f_oven,
-                                               f_null,     f_null,        f_null,      f_null, f_null,              f_null,
-                                               f_makeshift_bed, f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                               f_null,           f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                               f_null,                 f_null,               f_toilet, f_sink,  f_fridge, f_null,   f_chair,
-                                               f_counter, f_desk,  f_locker, f_null));
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_desk) {
-                        place_items("office", 70,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_locker) {
-                        place_items("office", 70,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_table) {
-                        place_items("office", 30,  i,  j, i,  j, false, 0);
-                    }
-                }
-            }
-            if (density > 1) {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, density);
-            } else {
-                place_spawns( GROUP_ZOMBIE, 2, 0, 0, 23, 23, .20);
-            }
-            if (t_north == "cathedral_b_entrance") {
-                rotate(1);
-            } else if (t_east == "cathedral_b_entrance") {
-                rotate(2);
-            } else if (t_south == "cathedral_b_entrance") {
-                rotate(3);
-            }
-        }
-
-        else {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-########################\n\
-########################\n\
-____####################\n\
-t_o__###################\n\
-_____###################\n\
-__o__###################\n\
-________################\n\
-________################\n\
-_o___o______############\n\
-____________############\n\
-____________############\n\
-----------|---|#########\n\
-..........|htt|#########\n\
-C..C..C...|.tt|#########\n\
-..........D.tt|#########\n\
-C..C..C...D.tt|#########\n\
-..........|.tt|#########\n\
-C..C..C...|hhh|#########\n\
-..........|hhh|#########\n\
-..........|-|-|#########\n\
-....hh....+<|###########\n\
-.|--------|-|###########\n\
-.|.S.S.S..|#############\n\
-.+........|#############\n",
-                                       mapf::ter_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", t_floor,
-                                               t_elevator, t_stairs_down, t_stairs_up, t_rock, t_door_metal_locked, t_door_glass_c, t_floor,
-                                               t_pavement_y, t_pavement, t_floor, t_wall_glass, t_wall_glass, t_console, t_console_broken,
-                                               t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c, t_door_locked,
-                                               t_door_locked_interior, t_window_stained_red, t_floor,  t_floor, t_floor,  t_column, t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("O E > < # X G C , _ r V H 6 x ^ . - | t + = D w T S e o h c d l s", f_oven,
-                                               f_null,     f_null,        f_null,      f_null, f_null,              f_null,
-                                               f_makeshift_bed, f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                               f_null,           f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                               f_null,                 f_null,               f_toilet, f_sink,  f_fridge, f_null,   f_chair,
-                                               f_counter, f_desk,  f_locker, f_null));
-            spawn_item(0, 3, "small_relic");
-            add_spawn(mon_blank, rng(1, 3), 0, 5);
-            if (t_west == "cathedral_b" && t_north == "cathedral_b") {
-                rotate(1);
-            } else if (t_east == "cathedral_b" && t_north == "cathedral_b") {
-                rotate(2);
-            } else if (t_east == "cathedral_b" && t_south == "cathedral_b") {
-                rotate(3);
             }
         }
     } else if (terrain_type == "lab" ||
@@ -4049,143 +3574,6 @@ ff.......|....|WWWWWWWW|\n\
             spawn_item( SEEX, SEEY - 3, "id_science" );
             break;
         }
-
-    } else if (terrain_type == "bunker") {
-
-        if (zlevel == 0) { // We're on ground level
-            dat.fill_groundcover();
-            //chainlink fence that surrounds bunker
-            line(this, t_chainfence_v, 1, 1, 1, SEEY * 2 - 1);
-            line(this, t_chainfence_v, SEEX * 2 - 1, 1, SEEX * 2 - 1, SEEY * 2 - 1);
-            line(this, t_chainfence_h, 1, SEEY * 2 - 1, SEEX * 2 - 1, SEEY * 2 - 1);
-            line(this, t_chainfence_h, 1, 1, SEEX * 2 - 1, 1);
-            line(this, t_chaingate_l, SEEX - 3, SEEY * 2 - 1, SEEX + 2, SEEY * 2 - 1);
-            line(this, t_chaingate_l, 1, SEEY * 2 - 2, 1, SEEY * 2 - 7);
-            line(this, t_chaingate_l, SEEX * 2 - 1, SEEY * 2 - 2, SEEX * 2 - 1, SEEY * 2 - 7);
-            //watch cabin
-            //line(this, t_concrete_wall, SEEX-6, SEEY*2-4, SEEX-4, SEEY*2-4);
-            ter_set(2, 13, t_concrete_wall);
-            ter_set(4, 13, t_concrete_wall);
-            ter_set(3, 13, t_door_c);
-            ter_set(4, 14, t_concrete_wall);
-            ter_set(4, 15, t_concrete_wall);
-            ter_set(1, 13, t_concrete_wall);
-            ter_set(3, 15, t_window);
-            ter_set(2, 15, t_window);
-            ter_set(1, 14, t_reinforced_glass);
-            ter_set(1, 15, t_reinforced_glass);
-            ter_set(2, 14, t_floor);
-            ter_set(3, 14, t_floor);
-            furn_set(2, 14, f_table);
-            //watch cabin 2
-            ter_set(SEEX * 2 - 2, 13, t_concrete_wall);
-            ter_set(SEEX * 2 - 4, 13, t_concrete_wall);
-            ter_set(SEEX * 2 - 3, 13, t_door_c);
-            ter_set(SEEX * 2 - 4, 14, t_concrete_wall);
-            ter_set(SEEX * 2 - 4, 15, t_concrete_wall);
-            ter_set(SEEX * 2 - 1, 13, t_concrete_wall);
-            ter_set(SEEX * 2 - 3, 15, t_window);
-            ter_set(SEEX * 2 - 2, 15, t_window);
-            ter_set(SEEX * 2 - 1, 14, t_reinforced_glass);
-            ter_set(SEEX * 2 - 1, 15, t_reinforced_glass);
-            ter_set(SEEX * 2 - 2, 14, t_floor);
-            ter_set(SEEX * 2 - 3, 14, t_floor);
-            furn_set(SEEX * 2 - 2, 14, f_table);
-            line(this, t_wall_metal,  7,  7, 16,  7);
-            line(this, t_wall_metal,  8,  8, 15,  8);
-            line(this, t_wall_metal,  8, 15, 15, 15);
-            line(this, t_wall_metal,  7, 16, 10, 16);
-            line(this, t_wall_metal, 14, 16, 16, 16);
-            line(this, t_wall_metal,  7,  8,  7, 15);
-            line(this, t_wall_metal, 16,  8, 16, 15);
-            line(this, t_wall_metal,  8,  9,  8, 14);
-            line(this, t_wall_metal, 15,  9, 15, 14);
-            square(this, t_floor, 9, 10, 14, 14);
-            line(this, t_stairs_down,  11,  9, 12,  9);
-            line(this, t_door_metal_locked, 11, 15, 12, 15);
-            for (int i = 9; i <= 13; i += 2) {
-                line(this, t_wall_metal,  9, i, 10, i);
-                line(this, t_wall_metal, 13, i, 14, i);
-                add_spawn(mon_turret_rifle, 1, 9, i + 1);
-                add_spawn(mon_turret_rifle, 1, 14, i + 1);
-            }
-            ter_set(13, 16, t_card_military);
-
-            if (is_ot_type("road", t_west)) {
-                rotate(1);
-            } else if (is_ot_type("road", t_north)) {
-                rotate(2);
-            } else if (is_ot_type("road", t_east)) {
-                rotate(3);
-            }
-        } else { // Below ground!
-
-            fill_background(this, t_rock);
-            square(this, t_floor, 1, 1, SEEX * 2 - 2, SEEY * 2 - 2);
-            line(this, t_wall_metal,  2,  8,  8,  8);
-            line(this, t_wall_metal, 15,  8, 21,  8);
-            line(this, t_wall_metal,  2, 15,  8, 15);
-            line(this, t_wall_metal, 15, 15, 21, 15);
-            for (int j = 2; j <= 16; j += 7) {
-                ter_set( 9, j    , t_card_military);
-                ter_set(14, j    , t_card_military);
-                ter_set( 9, j + 1, t_door_metal_locked);
-                ter_set(14, j + 1, t_door_metal_locked);
-                line(this, t_reinforced_glass,  9, j + 2,  9, j + 4);
-                line(this, t_reinforced_glass, 14, j + 2, 14, j + 4);
-                line(this, t_wall_metal,  9, j + 5,  9, j + 6);
-                line(this, t_wall_metal, 14, j + 5, 14, j + 6);
-
-                // Fill rooms with items!
-                for (int i = 2; i <= 15; i += 13) {
-                    items_location goods;
-                    switch( rng( 1, 14 ) ) {
-                        case 1:
-                            goods = "bots";
-                            break;
-                        case 2:
-                            goods = "guns_launcher_milspec";
-                            break;
-                        case 3:
-                        case 4:
-                            goods = "guns_rifle_milspec";
-                            break;
-                        case 5:
-                            goods = "mags_milspec";
-                            break;
-                        case 6:
-                        case 7:
-                        case 8:
-                            goods = "ammo_milspec";
-                            break;
-                        case  9:
-                            goods = "grenades";
-                            break;
-                        case 10:
-                            goods = "mil_armor";
-                            break;
-                        case 11:
-                            goods = "mil_hw";
-                            break;
-                        case 12:
-                        case 13:
-                            goods = "mil_food";
-                            break;
-                        case 14:
-                            goods = "bionics_mil";
-                            break;
-                    }
-                    place_items( goods, 80, i, j, i + 6, j + 5, false, 0, 100 );
-                }
-            }
-            line(this, t_wall_metal, 1, 1, SEEX * 2 - 2, 1);
-            line(this, t_wall_metal, 1, SEEY * 2 - 2, SEEX * 2 - 2, SEEY * 2 - 2);
-            line(this, t_wall_metal, 1, 2, 1, SEEY * 2 - 3);
-            line(this, t_wall_metal, SEEX * 2 - 2, 2, SEEX * 2 - 2, SEEY * 2 - 3);
-            ter_set(SEEX - 1, 21, t_stairs_up);
-            ter_set(SEEX,     21, t_stairs_up);
-        }
-
 
     } else if (terrain_type == "outpost") {
 
@@ -5593,784 +4981,6 @@ ff.......|....|WWWWWWWW|\n\
         if (terrain_type == "station_radio_west") {
             rotate(1);
         }
-
-
-    } else if (terrain_type == "public_works_entrance") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
- f  ____________________\n\
- f  ____________________\n\
- f  ___________    sssss\n\
- f  ___________    sssss\n\
- f  ___________  |--D---\n\
- f  ___________  |....|.\n\
- f  ___________  |....|.\n\
- f  ___________  |lttl|.\n\
- fFFF_________FFF|----|.\n\
-    ___________ss|..h.|.\n\
-    ___________xs|....+.\n\
-    ___________sswddd.|.\n\
-    ___________ssw.hd.|.\n\
-    ___________ss|l...|.\n\
-    ___________ss|-ww-|-\n\
-    ___________sssssssss\n\
-    ____________,_____,_\n\
-    ____________,_____,_\n\
-    ____________,_____,_\n\
-    ____________,_____,_\n\
-    ____________________\n\
-    ____________________\n\
-    ____________________\n\
-    ____________________\n",
-                                   mapf::ter_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", t_floor,      t_floor,
-                                           t_grate, t_pavement_y, t_pavement, t_floor, t_chainfence_v, t_chainfence_h, t_console,
-                                           t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                           t_door_locked, t_door_locked_alarm, t_window, t_floor,  t_floor, t_floor,  t_floor,    t_floor,
-                                           t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", f_pool_table,
-                                           f_crate_c, f_null,  f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                           f_null,           f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                           f_null,              f_null,   f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                           f_locker, f_null));
-        place_items("tools_construction", 80,  18, 7, 21,  7, false, 0);
-        place_items("office", 80,  18,  11, 20,  11, false, 0);
-        place_items("office", 60,  18,  13, 18,  13, false, 0);
-        place_spawns( GROUP_PUBLICWORKERS, 1, 0, 0, SEEX * 2 - 1, SEEX * 2 - 1, 0.2);
-        if (t_north == "public_works" && t_west == "public_works") {
-            rotate(3);
-        } else if (t_north == "public_works" && t_east == "public_works") {
-            rotate(0);
-        } else if (t_south == "public_works" && t_east == "public_works") {
-            rotate(1);
-        } else if (t_west == "public_works" && t_south == "public_works") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "public_works") {
-
-        // Init to grass & dirt;
-        dat.fill_groundcover();
-        if ((t_south == "public_works_entrance" && t_east == "public_works") ||
-            (t_north == "public_works" && t_east == "public_works_entrance") || (t_west == "public_works" &&
-                    t_north == "public_works_entrance") ||
-            (t_south == "public_works" && t_west == "public_works_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-                        \n\
- |---------------|FFFFFF\n\
- |....rrrrrrrr...|      \n\
- |r..............| _____\n\
- |r..............| _____\n\
- |r..............| _____\n\
- |r..............| _____\n\
- |r..............| _____\n\
- |r..............| _____\n\
- |...............| _____\n\
- |--___________--| _____\n\
- f  ___________    _____\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n\
- f  ____________________\n",
-                                       mapf::ter_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", t_floor,      t_floor,
-                                               t_grate, t_pavement_y, t_pavement, t_floor, t_chainfence_v, t_chainfence_h, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_alarm, t_window, t_floor,  t_floor, t_floor,  t_floor,    t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", f_pool_table,
-                                               f_crate_c, f_null,  f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                               f_null,           f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                               f_null,              f_null,   f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                               f_locker, f_null));
-            place_items("hardware", 85,  2, 3, 2,  8, false, 0);
-            place_items("hardware", 85,  6,  2, 13,  2, false, 0);
-            spawn_item(21, 2, "log", rng(1, 3));
-            spawn_item(15, 2, "pipe", rng(1, 10));
-            spawn_item(4, 2, "glass_sheet", rng(1, 7));
-            spawn_item(16, 5, "2x4", rng(1, 20));
-            spawn_item(16, 7, "2x4", rng(1, 20));
-            spawn_item(12, 2, "nail");
-            spawn_item(13, 2, "nail");
-            spawn_item(14, 2, "material_sand", rng(1, 10));
-            place_spawns( GROUP_PUBLICWORKERS, 1, 0, 0, SEEX * 2 - 1, SEEX * 2 - 1, 0.1);
-            if (t_west == "public_works_entrance") {
-                rotate(1);
-            }
-            if (t_north == "public_works_entrance") {
-                rotate(2);
-            }
-            if (t_east == "public_works_entrance") {
-                rotate(3);
-            }
-        }
-
-        else if ((t_west == "public_works_entrance" && t_north == "public_works") ||
-                 (t_north == "public_works_entrance" && t_east == "public_works") || (t_west == "public_works" &&
-                         t_south == "public_works_entrance") ||
-                 (t_south == "public_works" && t_east == "public_works_entrance")) {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-__________           f  \n\
-__________           f  \n\
-ss                   f  \n\
-ss                   f  \n\
-+----ww-ww-ww-ww--|GFf  \n\
-.^|..htth.........|     \n\
-..+..........PPP..w     \n\
-..|..........PPP..w     \n\
-..|ccecoS........^|     \n\
-..|---------------|     \n\
-...llllllll|cScScS|     \n\
-...........|......|     \n\
-...........+......|     \n\
-.htth......|..|+|+|     \n\
---ww---|...|.T|T|T|     \n\
-sssssss|...|--|-|-|     \n\
-____sss|.........l|     \n\
-____sss+...c......w     \n\
-____sss+...ch...hdw     \n\
-____sss|^..c...ddd|     \n\
-____sss|-www--www-|     \n\
-____sss                 \n\
-____sss                 \n\
-____sss                 \n",
-                                       mapf::ter_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", t_floor,      t_floor,
-                                               t_chaingate_l, t_pavement_y, t_pavement, t_floor, t_chainfence_v, t_chainfence_h, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_alarm, t_window, t_floor,  t_floor, t_floor,  t_floor,    t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", f_pool_table,
-                                               f_crate_c, f_null,  f_null,       f_null,     f_rack,  f_null,         f_null,         f_null,
-                                               f_null,           f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,   f_null,
-                                               f_null,              f_null,   f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                               f_locker, f_null));
-            place_items("fridge", 80,  5, 8, 5,  8, false, 0);
-            place_items("pool_table", 80,  13,  6, 15,  7, false, 0);
-            place_items("construction_worker", 90,  3, 10, 10,  10, false, 0);
-            place_items("office", 80,  15,  19, 17,  19, false, 0);
-            place_items("cleaning", 80,  17,  16, 17,  16, false, 0);
-            place_spawns( GROUP_PUBLICWORKERS, 1, 0, 0, SEEX * 2 - 1, SEEX * 2 - 1, 0.3);
-            if (t_north == "public_works_entrance") {
-                rotate(1);
-            }
-            if (t_east == "public_works_entrance") {
-                rotate(2);
-            }
-            if (t_south == "public_works_entrance") {
-                rotate(3);
-            }
-        }
-
-        else {
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-                        \n\
-FFFFFFFFF|------------| \n\
-         |..ll..rrr...| \n\
-__________............| \n\
-__________...........c| \n\
-__________...........c| \n\
-__________...........l| \n\
-__________...........l| \n\
-________ |............| \n\
-________ |..O.clc.O...| \n\
-________ |............| \n\
-__________............| \n\
-__________...........c| \n\
-__________...........c| \n\
-__________...........l| \n\
-__________...........l| \n\
-________ |......rr....| \n\
-________ |---+--------| \n\
-________   |..rrrr|  f  \n\
-__________s+......w  f  \n\
-__________ |r....r|  f  \n\
-__________ |r....r|  f  \n\
-__________ |--ww--|  f  \n\
-__________           f  \n",
-                                       mapf::ter_bind("O P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", t_column, t_floor,
-                                               t_floor,   t_grate, t_pavement_y, t_pavement, t_floor, t_chainfence_v, t_chainfence_h, t_console,
-                                               t_console_broken, t_shrub, t_floor,        t_floor, t_wall, t_wall, t_floor, t_door_c,
-                                               t_door_locked, t_door_locked_alarm, t_window, t_floor,  t_floor, t_floor,  t_floor,    t_floor,
-                                               t_floor,   t_floor, t_floor,  t_sidewalk),
-                                       mapf::furn_bind("O P C G , _ r f F 6 x $ ^ . - | t + = D w T S e o h c d l s", f_null,
-                                               f_pool_table, f_crate_c, f_null,  f_null,       f_null,     f_rack,  f_null,         f_null,
-                                               f_null,    f_null,           f_null,  f_indoor_plant, f_null,  f_null,   f_null,   f_table, f_null,
-                                               f_null,        f_null,              f_null,   f_toilet, f_sink,  f_fridge, f_bookcase, f_chair,
-                                               f_counter, f_desk,  f_locker, f_null));
-            place_items("tools_carpentry", 85,  14, 18, 17,  18, false, 0);
-            place_items("tools_construction", 85,  17,  20, 17,  21, false, 0);
-            place_items("tools_earthworking", 85,  12,  20, 12,  21, false, 0);
-            place_items("mechanics", 85,  21, 12, 21,  15, false, 0);
-            place_items("mechanics", 85,  21,  4, 21,  7, false, 0);
-            place_items("mechanics", 85,  14,  9, 16,  9, false, 0);
-            place_items("electronics", 80,  16,  2, 18,  2, false, 0);
-            place_items("cleaning", 85,  12,  2, 13,  2, false, 0);
-            spawn_item(3, 2, "log", rng(1, 3));
-            place_spawns( GROUP_PUBLICWORKERS, 1, 0, 0, SEEX * 2 - 1, SEEX * 2 - 1, 0.1);
-            if (t_west == "public_works" && t_north == "public_works") {
-                rotate(1);
-                if( one_in( 2 ) ) {
-                    add_vehicle( vgroup_id( "industrial_vehicles" ), { 2, 0 }, 90, 0 ,0 );
-                }
-            } else if (t_east == "public_works" && t_north == "public_works") {
-                rotate(2);
-                if( one_in( 2 ) ) {
-                    add_vehicle( vgroup_id( "industrial_vehicles" ), { 23, 10 }, 270, 0, 0 );
-                }
-            } else if (t_east == "public_works" && t_south == "public_works") {
-                rotate(3);
-                if( one_in( 2 ) ) {
-                    add_vehicle( vgroup_id( "industrial_vehicles" ), { 10, 23 }, 0, 0, 0 );
-                }
-            } else {
-                if( one_in( 2 ) ) {
-                    add_vehicle( vgroup_id( "industrial_vehicles" ), { 0, 10 }, 90, 0, 0 );
-                }
-            }
-        }
-
-    } else if (terrain_type == "school_1") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
- ||-------|--++----++--|\n\
-  |....................|\n\
-  |....................|\n\
-  |..hhhhhhh..hhhhhhh..|\n\
-  |....................|\n\
-  |..hhhhhhh..hhhhhhh..|\n\
-  |....................|\n\
-  |..hhhhhhh..hhhhhhh..|\n\
-  |....................|\n\
-  |..hhhhhhh..hhhhhhh..|\n\
-  |....................|\n\
-ss+..hhhhhhh..hhhhhhh..+\n\
-ss+....................+\n\
-ss|..hhhhhhh..hhhhhhh..|\n\
-ss|....................|\n\
-ss|---..............---|\n\
-ss|....................|\n\
-ss|..----------------..|\n\
-ss+....................|\n\
-ss|....................|\n\
-ss|--------------------|\n\
-ss                      \n\
-ssssssssssssssssssssssss\n\
-ssssssssssssssssssssssss\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 2, 0, 0, 23, 23, 3);
-        if (t_north == "school_2") {
-            rotate(3);
-        } else if (t_east == "school_2") {
-            rotate(0);
-        } else if (t_south == "school_2") {
-            rotate(1);
-        } else if (t_west == "school_2") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "school_2") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-........l|...|.h..x..w  \n\
-l.......l|-+-|.h..dh.w  \n\
-l.......l|...+....c..w  \n\
-l.......l|...|.......|  \n\
-l.......l|h..|-------|$ \n\
-l.......l|h..|.......|  \n\
-l.......l|h..+....d..w  \n\
-l.......l|h..|.h..dh.w  \n\
-l.......l|...|....d..|  \n\
-l.......l|...|------||  \n\
-.........|....#####.|$  \n\
-.........+..........+sss\n\
-.........+..........+sss\n\
-.........|ccccccc...|$  \n\
--w-+++-w-|..........w$  \n\
-   sss   |dd..tt.dddw$  \n\
-  $sss$  |dh..tt..hdw$  \n\
-   sss   |d........^|$  \n\
-  $sss$  |-www--www-|$  \n\
-   sss    $$$$$$$$$$$$  \n\
-  $sss$                 \n\
-   sss                  \n\
-ssssssssssssssssssssssss\n\
-ssssssssssssssssssssssss\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("office", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("school", 60,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_5") {
-            rotate(0);
-        } else if (t_east == "school_5") {
-            rotate(1);
-        } else if (t_south == "school_5") {
-            rotate(2);
-        } else if (t_west == "school_5") {
-            rotate(3);
-        }
-
-
-    } else if (terrain_type == "school_3") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-ssssssssssssssssssssssss\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ss_____________________s\n\
-ssLLLLLLL_______LLLLLLLs\n\
-ss$$   $$_______$$   $$s\n\
-sssssssss_______ssssssss\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        if (t_north == "school_2") {
-            rotate(1);
-            if (x_in_y(1, 7)) {
-                add_vehicle( vproto_id( "schoolbus" ), 19, 10, 0);
-            }
-            else if (one_in(5)) {
-                add_vehicle( vproto_id( "fire_truck" ), 19, 10, 0);
-                }
-        } else if (t_east == "school_2") {
-            rotate(2);
-            if (x_in_y(1, 7)) {
-                add_vehicle( vproto_id( "schoolbus" ), 9, 7, 0);
-            }
-            else if (one_in(5)) {
-                add_vehicle( vproto_id( "fire_truck" ), 9, 7, 0);
-                }
-        } else if (t_south == "school_2") {
-            rotate(3);
-            if (x_in_y(1, 7)) {
-                add_vehicle( vproto_id( "schoolbus" ), 12, 18, 180);
-            }
-            else if (one_in(5)) {
-                add_vehicle( vproto_id( "fire_truck" ), 12, 18, 180);
-                }
-        } else if (t_west == "school_2") {
-            rotate(0);
-            if (x_in_y(1, 7)) {
-                add_vehicle( vproto_id( "schoolbus" ), 17, 7, 0);
-            }
-            else if (one_in(5)) {
-                add_vehicle( vproto_id( "fire_truck" ), 17, 7, 0);
-                }
-        }
-
-
-    } else if (terrain_type == "school_4") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
- w..ddd...+....|.d.d.d.d\n\
- w........|....|........\n\
- w........|....|........\n\
- wd.d.d.d.|....+..ddd...\n\
- |h.h.h.h.|....|..dh...l\n\
- |d.d.d.d.|....|--------\n\
- wh.h.h.h.|....|..ttt..l\n\
- wd.d.d.d.|....+........\n\
- wh.h.h.h.|....|.h.h.h.h\n\
- w........+....|.d.d.d.d\n\
- |l..ttt..|....|.h.h.h.h\n\
- |--------|....|.d.d.d.d\n\
- |l..hd...|....|.h.h.h.h\n\
- w..ddd...+....|.d.d.d.d\n\
- w........|....|........\n\
- w........|....|........\n\
- wd.d.d.d.|....+..ddd...\n\
- |h.h.h.h.|....|..dh...l\n\
- |d.d.d.d.|....|--------\n\
- wh.h.h.h.|.............\n\
- wd.d.d.d.|.............\n\
- wh.h.h.h.|....^ccc^ccc^\n\
- w........+.............\n\
- |l..ttt..|.............\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("school", 60,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_5") {
-            rotate(3);
-        } else if (t_east == "school_5") {
-            rotate(0);
-        } else if (t_south == "school_5") {
-            rotate(1);
-        } else if (t_west == "school_5") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "school_5") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-|.oooooooo...o.o.o.o.|--\n\
-|............o.o.o.o.|.T\n\
-|.oooooooo...o.o.o.o.|.S\n\
-|............o.o.o.o.|+-\n\
-|.oooooooo..............\n\
-|.......................\n\
-|--------|o....o.o.o.|+-\n\
-|ch......|o....o.o.o.|.S\n\
-|cxc.....|o....o.o.o.|.T\n\
-|xxx..xxx|o..........|--\n\
-|hhh..hhh|.........ooooo\n\
-|........|.htth.........\n\
-|xxx..xxx|.htth.........\n\
-|hhh..hhh|........ccc.cc\n\
-|........|.htth...c....t\n\
-|ww-++-ww|.htth...ch....\n\
-|........|........c...hd\n\
-|........|........c..ddd\n\
-|........|-----++-------\n\
-........................\n\
-........................\n\
-........................\n\
-.........|---|-------|--\n\
-........l|l.l|^...ccl|$ \n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("school", 60,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_bookcase) {
-                    place_items("novels", 50,  i,  j, i,  j, false, 0);
-                    place_items("manuals", 40,  i,  j, i,  j, false, 0);
-                    place_items("textbooks", 30,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_2") {
-            rotate(2);
-        } else if (t_east == "school_2") {
-            rotate(3);
-        } else if (t_south == "school_2") {
-            rotate(0);
-        } else if (t_west == "school_2") {
-            rotate(1);
-        }
-
-
-    } else if (terrain_type == "school_6") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-|d.d.d.d.|....|.d.d.d.dw\n\
-|........|....|.h.h.h.hw\n\
-|........|....|.d.d.d.d|\n\
-|..ddd...+....|.h.h.h.h|\n\
-|l..hd...|....|.d.d.d.dw\n\
-|--------|....|........w\n\
-|l..hd...|....|........w\n\
-|..ddd...+....+..ddd...w\n\
-|........|....|..dh...l|\n\
-|........|....|--------|\n\
-|d.d.d.d.|....|..ttt..l|\n\
-|h.h.h.h.|....+........w\n\
-|d.d.d.d.|....|.h.h.h.hw\n\
-|h.h.h.h.|....|.d.d.d.dw\n\
-|d.d.d.d.|....|.h.h.h.hw\n\
-|h.h.h.h.|....|.d.d.d.d|\n\
-|........+....|.h.h.h.h|\n\
-|l..ttt..|....|.d.d.d.dw\n\
-|--------|....|........w\n\
-..............|........w\n\
-..............+..ddd...w\n\
-..............|..dh...l|\n\
------------++-|--------|\n\
-ssssssssssssssssssssssss\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("school", 60,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_5") {
-            rotate(1);
-        } else if (t_east == "school_5") {
-            rotate(2);
-        } else if (t_south == "school_5") {
-            rotate(3);
-        } else if (t_west == "school_5") {
-            rotate(0);
-        }
-
-
-    } else if (terrain_type == "school_7") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
- |--------|    |--wwww--\n\
- |l..ll..l|-++-|ccccccll\n\
- |l..ll..l|....+........\n\
- |l..ll...+....|Scc..ccS\n\
- |l......l|....|........\n\
- |-+------|....|Scc..ccS\n\
- |...hd.oo|....|........\n\
- w..ddd...+....|Scc..ccS\n\
- w........|....|........\n\
- w........|....|........\n\
- wScc..ccS|....+..ddd...\n\
- |........|....|..dh..ll\n\
- |Scc..ccS|....|--------\n\
- w........|....+........\n\
- wScc..ccS|....|....|+|+\n\
- w........|....|SSS.|T|T\n\
- w........+....|----|-|-\n\
- |l.ttt.ll|....|..ttt..l\n\
- |--------|....+........\n\
- |........+....|.h.h.h.h\n\
- |+|+|....|....|.d.d.d.d\n\
- |T|T|.SSS|....|.h.h.h.h\n\
- |-|-|----|....|.d.d.d.d\n\
- |l..hd...|....|.h.h.h.h\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("chem_school", 60,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_8") {
-            rotate(3);
-        } else if (t_east == "school_8") {
-            rotate(0);
-        } else if (t_south == "school_8") {
-            rotate(1);
-        } else if (t_west == "school_8") {
-            rotate(2);
-        }
-
-
-    } else if (terrain_type == "school_8") {
-
-        dat.fill_groundcover();
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-|                     |-\n\
-|ffffffffffGffffffffff|.\n\
-w         sss         w.\n\
-w      $$ sss $$      w.\n\
-w      $$ sss $$      w.\n\
-w         sss         |.\n\
-|         ssssssssssss+.\n\
-w         sss         |.\n\
-w      $$ sss $$      w.\n\
-w      $$ sss $$      w.\n\
-w      $$ sss $$      w.\n\
-|     $$  sss  $$     |.\n\
-|    $$  sssss  $$    |-\n\
-|   $$  sssssss  $$     \n\
-|   $$  sssssss  $$     \n\
-|   $$  sssOsss  $$     \n\
-|   $$  sssssss  $$     \n\
-|    $$  sssss  $$      \n\
-w     $$       $$       \n\
-w                       \n\
-w                       \n\
-|                       \n\
-|-www-wwww--wwww-www----\n\
-|....................+.l\n",
-                                   mapf::ter_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_pavement, t_pavement_y,
-                                           t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub, t_floor,        t_floor,
-                                           t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm, t_door_locked, t_window,
-                                           t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor, t_floor,  t_sidewalk),
-                                   mapf::furn_bind("_ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_null,     f_null,
-                                           f_null,   f_null,         f_null,        f_null,           f_null,  f_indoor_plant, f_null,  f_null,
-                                           f_null,   f_bench, f_table, f_null,   f_null,              f_null,        f_null,   f_toilet,
-                                           f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,  f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        place_items("cleaning", 80,  22, 23, 23,  23, false, 0);
-        spawn_item(12, 15, "american_flag");
-        if (t_north == "school_5") {
-            rotate(2);
-        } else if (t_east == "school_5") {
-            rotate(3);
-        } else if (t_south == "school_5") {
-            rotate(0);
-        } else if (t_west == "school_5") {
-            rotate(1);
-        }
-
-
-    } else if (terrain_type == "school_9") {
-
-        mapf::formatted_set_simple(this, 0, 0,
-                                   "\
-wwww--wwww--wwww--wwww-|\n\
-........htth.htth.htth.|\n\
-.hhhhh..htth.htth.htth.w\n\
-.ttttt..htth.htth.htth.w\n\
-.ttttt..htth...........w\n\
-.hhhhh.................w\n\
-..............ccccccc..|\n\
-.hhhhh........c........|\n\
-.ttttt.....c..c.....eee|\n\
-.ttttt...xhc..|--..----|\n\
-.hhhhh..cccc..|c......ew\n\
-..............|O..tt..cw\n\
-|--------|-++-|O..tt..cw\n\
-|........+....|O......cw\n\
-|+|+|....|....|-|--...e|\n\
-|T|T|.SSS|....+l|r+....+\n\
-|-|-|----|....|-|------|\n\
-|ll.ttt..|....+........|\n\
-w........+....|....|+|+|\n\
-wh.h.h.h.|....|SSS.|T|T|\n\
-wd.d.d.d.|....|----|-|-|\n\
-|h.h.h.h.|....|..ttt..l|\n\
-|d.d.d.d.|....+........w\n\
-|h.h.h.h.|....|.h.h.h.hw\n",
-                                   mapf::ter_bind("e r _ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", t_floor,  t_floor,
-                                           t_pavement, t_pavement_y, t_column, t_chainfence_h, t_chaingate_c, t_console_broken, t_shrub,
-                                           t_floor,        t_floor, t_wall, t_wall, t_floor, t_floor, t_door_c, t_door_locked_alarm,
-                                           t_door_locked, t_window, t_floor,  t_floor, t_floor,  t_floor,    t_floor, t_floor,   t_floor,
-                                           t_floor,  t_sidewalk),
-                                   mapf::furn_bind("e r _ L O f G x $ ^ . - | # t + = D w T S e o h c d l s", f_fridge, f_rack,
-                                           f_null,     f_null,       f_null,   f_null,         f_null,        f_null,           f_null,
-                                           f_indoor_plant, f_null,  f_null,   f_null,   f_bench, f_table, f_null,   f_null,
-                                           f_null,        f_null,   f_toilet, f_sink,  f_fridge, f_bookcase, f_chair, f_counter, f_desk,
-                                           f_locker, f_null));
-        place_spawns( GROUP_SCHOOL, 3, 1, 1, 22, 22, 2);
-        place_items("cleaning", 80,  15,  15, 15,  15, false, 0);
-        place_items("cannedfood", 95,  17,  15, 17,  15, false, 0);
-        place_items("fast_food", 95,  18,  11, 19,  12, false, 0);
-        for (int i = 0; i <= 23; i++) {
-            for (int j = 0; j <= 23; j++) {
-                if (this->furn(i, j) == f_desk) {
-                    place_items("school", 50,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_locker) {
-                    place_items("school", 60,  i,  j, i,  j, false, 0);
-                } else if (this->furn(i, j) == f_fridge) {
-                    place_items("fridge", 90,  i,  j, i,  j, false, 0);
-                }
-            }
-        }
-        if (t_north == "school_8") {
-            rotate(1);
-        } else if (t_east == "school_8") {
-            rotate(2);
-        } else if (t_south == "school_8") {
-            rotate(3);
-        } else if (t_west == "school_8") {
-            rotate(0);
-        }
-
 
     } else if (terrain_type == "prison_1") {
 
@@ -8298,284 +6908,7 @@ $$$$-|-|=HH-|-HHHH-|####\n",
     // break the clause in two so MSVC compiles work, until this file is refactored.
     // "please, shoot me now" - refactorer
     if (!terrain_type_found) {
-    if (terrain_type == "farm") {
-
-        if (!one_in(10)) {
-            dat.fill_groundcover();
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                  &     \n\
-                        \n\
-          %%%       %%% \n\
-###++### |-w---+-----w-|\n\
-#DD____# |uSeuu........|\n\
-#D_____# |o............|\n\
-#_1__1_# |u..........H.|\n\
-#______# |u...|---+----|\n\
-#______# |-+-||kh......|\n\
-#_1__1_# |...|.........w\n\
-#______# |b..+......BB.|\n\
-#____ll# |.ST|.....dBBd|\n\
-###++### |-w-|----w----|\n\
-                        \n\
-                        \n\
-FFFFFFFFFFFFFFFFFFFFFFFF\n\
-,,,,,,,,,,,,,,,,,,,,,,,,\n",
-                                       mapf::ter_bind(", F . _ H u e S T o b l # % 1 D + - | w k h B d &", t_dirt, t_fence_barbed, t_floor,
-                                               t_dirtfloor, t_floor,    t_floor,    t_floor,  t_floor, t_floor,  t_floor, t_floor,   t_floor,
-                                               t_wall_wood, t_shrub, t_column, t_dirtmound, t_door_c, t_wall, t_wall, t_window_domestic,
-                                               t_floor, t_floor, t_floor, t_floor, t_water_pump),
-                                       mapf::furn_bind(", F . _ H u e S T o b l # % 1 D + - | w k h B d", f_null, f_null,         f_null,
-                                               f_null,      f_armchair, f_cupboard, f_fridge, f_sink,  f_toilet, f_oven,  f_bathtub, f_locker,
-                                               f_null,      f_null,  f_null,   f_null,      f_null,   f_null,   f_null,   f_null,
-                                               f_desk,  f_chair, f_bed,   f_dresser));
-            place_items("fridge", 65, 12, 11, 12, 11, false, 0);
-            place_items("kitchen", 70, 10, 15, 14, 11, false, 0);
-            place_items("moonshine_brew", 65, 10, 15, 14, 11, false, 0);
-            place_items("livingroom", 65, 15, 11, 22, 13, false, 0);
-            place_items("dresser", 80, 19, 18, 19, 18, false, 0);
-            place_items("dresser", 80, 22, 18, 22, 18, false, 0);
-            place_items("bedroom", 65, 15, 15, 22, 18, false, 0);
-            place_items("softdrugs", 70, 11, 16, 12, 17, false, 0);
-            place_items("tools_earthworking", 50, 1, 11, 6, 18, true, 0);
-            place_items("homeguns", 20, 1, 11, 6, 18, true, 0);
-            place_items("bed", 60, 20, 21, 17, 18, true, 0);
-            if (one_in(2)) {
-                add_spawn(mon_zombie, rng(1, 6), 4, 14);
-            } else {
-                place_spawns( GROUP_DOMESTIC, 2, 10, 15, 12, 17, 1);
-            }
-        } else {
-            dat.fill_groundcover();
-            mapf::formatted_set_simple(this, 0, 0,
-                                       "\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                        \n\
-                  &     \n\
-                        \n\
-          %%%       %%% \n\
-###++### |-w---+-----w-|\n\
-#DD____# |uSeuu..mm....|\n\
-#D_____# |o...........m|\n\
-#_1__1_# |u...........m|\n\
-#______# |u...|---+----|\n\
-#______# |-+-||mm....mm|\n\
-#_1__1_# |...|.........w\n\
-#______# |b..+......BB.|\n\
-#____ll# |.ST|mm...dBBd|\n\
-###++### |-w-|----w----|\n\
-                        \n\
-                        \n\
-FFFFFFFFFFFFFFFFFFFFFFFF\n\
-,,,,,,,,,,,,,,,,,,,,,,,,\n",
-                                       mapf::ter_bind("m , F . _ H u e S T o b l # % 1 D + - | w k h B d &", t_floor,         t_dirt,
-                                               t_fence_barbed, t_floor, t_dirtfloor, t_floor,    t_floor,    t_floor,  t_floor, t_floor,  t_floor,
-                                               t_floor,   t_floor,  t_wall_wood, t_shrub, t_column, t_dirtmound, t_door_c, t_wall, t_wall,
-                                               t_window_domestic, t_floor, t_floor, t_floor, t_floor, t_water_pump),
-                                       mapf::furn_bind("m , F . _ H u e S T o b l # % 1 D + - | w k h B d", f_makeshift_bed, f_null,
-                                               f_null,         f_null,  f_null,      f_armchair, f_cupboard, f_fridge, f_sink,  f_toilet, f_oven,
-                                               f_bathtub, f_locker, f_null,      f_null,  f_null,   f_null,      f_null,   f_null,   f_null,
-                                               f_null,            f_desk,  f_chair, f_bed,   f_dresser));
-            place_items("cannedfood", 65, 12, 11, 12, 11, false, 0);
-            place_items("tools_earthworking", 50, 1, 11, 6, 18, true, 0);
-            place_items("homeguns", 20, 1, 11, 6, 18, true, 0);
-            place_items("bed", 60, 20, 21, 17, 18, true, 0);
-            for (int i = 0; i <= 23; i++) {
-                for (int j = 0; j <= 23; j++) {
-                    if (this->furn(i, j) == f_dresser) {
-                        place_items("dresser", 50,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->ter(i, j) == t_floor) {
-                        place_items("trash", 20,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_cupboard) {
-                        place_items("kitchen", 70,  i,  j, i,  j, false, 0);
-                        place_items("softdrugs", 40,  i,  j, i,  j, false, 0);
-                        place_items("cannedfood", 40,  i,  j, i,  j, false, 0);
-                    }
-                    if (this->furn(i, j) == f_makeshift_bed || this->furn(i, j) == f_bed) {
-                        place_items("livingroom", 20,  i,  j, i,  j, false, 0);
-                        place_items("survival_armor", 20,  i,  j, i,  j, false, 0);
-                        place_items("camping", 20,  i,  j, i,  j, false, 0);
-                        place_items("gear_survival", 20,  i,  j, i,  j, false, 0);
-                        place_items("bed", 40,  i,  j, i,  j, false, 0);
-                    }
-                    if ( dat.is_groundcover( this->ter(i, j) ) ) {
-                        if (one_in(20)) {
-                            madd_trap( this, i, j, tr_beartrap);
-                        }
-                        if (one_in(20)) {
-                            madd_trap( this, i, j, tr_tripwire);
-                        }
-                        if (one_in(15)) {
-                            ter_set(i, j, t_pit);
-                        }
-                    }
-                }
-            }
-        }
-
-
-    } else if (terrain_type == "farm_field") {
-
-        //build barn
-        if (t_east == "farm") {
-            dat.fill_groundcover();
-            square(this, t_wall_wood, 3, 3, 20, 20);
-            square(this, t_dirtfloor, 4, 4, 19, 19);
-            line(this, t_door_metal_locked, 8, 20, 15, 20);
-            ter_set(16, 19, t_barndoor);
-            ter_set(16, 21, t_barndoor);
-            line(this, t_door_metal_locked, 8, 3, 15, 3);
-            ter_set(16, 2, t_barndoor);
-            ter_set(16, 4, t_barndoor);
-            square_furn(this, f_hay, 4, 4, 6, 6);
-            line(this, t_fence_h, 4, 8, 6, 8);
-            line(this, t_fence_v, 6, 9, 6, 14);
-            line(this, t_fence_h, 4, 15, 6, 15);
-            line(this, t_fencegate_c, 6, 11, 6, 12);
-
-            line(this, t_fence_h, 17, 8, 19, 8);
-            line(this, t_fence_v, 17, 9, 17, 14);
-            line(this, t_fence_h, 17, 15, 19, 15);
-            line(this, t_fencegate_c, 17, 11, 17, 12);
-            line_furn(this, f_locker, 4, 19, 7, 19);
-            ter_set(7, 7, t_column);
-            ter_set(16, 7, t_column);
-            ter_set(7, 16, t_column);
-            ter_set(16, 16, t_column);
-            ter_set(5, 3, t_window_boarded);
-            ter_set(18, 3, t_window_boarded);
-            line(this, t_window_boarded, 3, 5, 3, 6);
-            line(this, t_window_boarded, 3, 11, 3, 12);
-            line(this, t_window_boarded, 3, 17, 3, 18);
-            line(this, t_window_boarded, 20, 5, 20, 6);
-            line(this, t_window_boarded, 20, 11, 20, 12);
-            line(this, t_window_boarded, 20, 17, 20, 18);
-            ter_set(5, 20, t_window_boarded);
-            ter_set(18, 20, t_window_boarded);
-
-            if(t_south == "farm_field") {
-                square(this, t_fence_barbed, 1, 20, 1, 23);
-                ter_set(2, 20, t_fence_barbed);
-                ter_set(1, 20, t_fence_barbed);
-                square(this, t_fence_barbed, 22, 20, 22, 22);
-                ter_set(21, 20, t_fence_barbed);
-                ter_set(23, 22, t_fence_barbed);
-                ter_set(22, 22, t_fence_barbed);
-                ter_set(22, 20, t_fence_barbed);
-                square(this, t_dirt, 2, 21, 21, 23);
-                square(this, t_dirt, 22, 23, 23, 23);
-                ter_set(16, 21, t_barndoor);
-            }
-            place_items("tools_earthworking", 60, 4, 4, 7, 19, true, 0);
-            place_items("tools_earthworking", 60, 16, 5, 19, 19, true, 0);
-            place_items("mechanics", 40, 8, 4, 15, 19, true, 0);
-            place_items("home_hw", 50, 4, 19, 7, 19, true, 0);
-            place_items("tools_common", 50, 4, 19, 7, 19, true, 0);
-            for (int x = 4; x <= 6; x++) {
-                for (int y = 4; y <= 6; y++) {
-                    spawn_item(x, y, "straw_pile", rng(0, 8));
-                }
-            }
-            for (int y = 9; y <= 14; y++) {
-                if (one_in(2)) {
-                    spawn_item(4, y, "straw_pile", rng(5, 15));
-                }
-                if (one_in(2)) {
-                    spawn_item(19, y, "straw_pile", rng(5, 15));
-                }
-            }
-            if (one_in(3)) {
-                add_spawn(mon_zombie, rng(3, 6), 12, 12);
-            } else {
-                place_spawns( GROUP_DOMESTIC, 2, 0, 0, 15, 15, 1);
-            }
-
-        } else {
-            fill_background(this, t_grass); // basic lot
-            square(this, t_fence_barbed, 1, 1, 22, 22);
-            square(this, t_dirt, 2, 2, 21, 21);
-            ter_set(1, 1, t_fence_barbed);
-            ter_set(22, 1, t_fence_barbed);
-            ter_set(1, 22, t_fence_barbed);
-            ter_set(22, 22, t_fence_barbed);
-
-            int xStart = 4;
-            int xEnd = 19;
-            //acidia, connecting fields
-            if(t_east == "farm_field") {
-                square(this, t_fence_barbed, 22, 1, 23, 22);
-                square(this, t_dirt, 21, 2, 23, 21);
-                xEnd = 22;
-            }
-            if(t_west == "farm_field") {
-                square(this, t_fence_barbed, 0, 1, 1, 22);
-                square(this, t_dirt, 0, 2, 2, 21);
-                xStart = 1;
-            }
-            if(t_south == "farm_field") {
-                square(this, t_fence_barbed, 1, 22, 22, 23);
-                square(this, t_dirt, 2, 21, 21, 23);
-                line(this, t_dirtmound, xStart, 21, xEnd, 21);
-                if(t_east == "farm_field") {
-                    square(this, t_dirt, 20, 20, 23, 23);
-                }
-                if(t_west == "farm_field") {
-                    square(this, t_dirt, 0, 20, 3, 23);
-                }
-            }
-            if(t_north == "farm_field" || t_north == "farm") {
-                square(this, t_fence_barbed, 1, 0, 22, 1);
-                square(this, t_dirt, 2, 0, 21, 2);
-                line(this, t_dirtmound, xStart, 1, xEnd, 1);
-                if(t_east == "farm_field") {
-                    square(this, t_dirt, 20, 0, 23, 3);
-                }
-                if(t_west == "farm_field") {
-                    square(this, t_dirt, 0, 0, 3, 3);
-                }
-            }
-            if(t_west == "farm") {
-                square(this, t_fence_barbed, 0, 22, 1, 22);
-                square(this, t_dirt, 0, 23, 2, 23);
-                ter_set(1, 22, t_fence_barbed);
-            }
-            //standard field
-            line(this, t_dirtmound, xStart, 3, xEnd, 3); //Crop rows
-            line(this, t_dirtmound, xStart, 5, xEnd, 5);
-            line(this, t_dirtmound, xStart, 7, xEnd, 7);
-            line(this, t_dirtmound, xStart, 9, xEnd, 9);
-            line(this, t_dirtmound, xStart, 11, xEnd, 11);
-            line(this, t_dirtmound, xStart, 13, xEnd, 13);
-            line(this, t_dirtmound, xStart, 15, xEnd, 15);
-            line(this, t_dirtmound, xStart, 17, xEnd, 17);
-            line(this, t_dirtmound, xStart, 19, xEnd, 19);
-
-            place_items("hydro", 70, xStart, 3, xEnd, 3, true, turn); //Spawn crops
-            place_items("hydro", 70, xStart, 5, xEnd, 5, true, turn);
-            place_items("hydro", 70, xStart, 7, xEnd, 7, true, turn);
-            place_items("hydro", 70, xStart, 9, xEnd, 9, true, turn);
-            place_items("hydro", 70, xStart, 11, xEnd, 11, true, turn);
-            place_items("hydro", 70, xStart, 13, xEnd, 13, true, turn);
-            place_items("hydro", 70, xStart, 15, xEnd, 15, true, turn);
-            place_items("hydro", 70, xStart, 17, xEnd, 17, true, turn);
-            place_items("hydro", 70, xStart, 19, xEnd, 19, true, turn);
-        }
-
-    } else if (terrain_type == "megastore_entrance") {
+    if (terrain_type == "megastore_entrance") {
 
         fill_background(this, t_floor);
         // Construct facing north; below, we'll rotate to face road
@@ -10132,10 +8465,6 @@ FFFFFFFFFFFFFFFFFFFFFFFF\n\
 void map::place_spawns(const mongroup_id& group, const int chance,
                        const int x1, const int y1, const int x2, const int y2, const float density)
 {
-    if (!get_world_option<bool>( "STATIC_SPAWN" ) ) {
-        return;
-    }
-
     if( !group.is_valid() ) {
         const point omt = sm_to_omt_copy( get_abs_sub().x, get_abs_sub().y );
         const oter_id &oid = overmap_buffer.ter( omt.x, omt.y, get_abs_sub().z );
@@ -10226,9 +8555,7 @@ int map::place_npc( int x, int y, const std::string &type )
     npc *temp = new npc();
     temp->normalize();
     temp->load_npc_template(type);
-    temp->spawn_at(abs_sub.x, abs_sub.y, abs_sub.z);
-    temp->setx( x );
-    temp->sety( y );
+    temp->spawn_at_precise( { abs_sub.x, abs_sub.y }, { x, y, abs_sub.z } );
     return temp->getID();
 }
 
@@ -10239,8 +8566,6 @@ std::vector<item *> map::place_items( items_location loc, int chance, int x1, in
                                       int magazine, int ammo )
 {
     std::vector<item *> res;
-
-    const float spawn_rate = get_world_option<float>( "ITEM_SPAWNRATE" );
 
     if (chance > 100 || chance <= 0) {
         debugmsg("map::place_items() called with an invalid chance (%d)", chance);
@@ -10254,33 +8579,28 @@ std::vector<item *> map::place_items( items_location loc, int chance, int x1, in
         return res;
     }
 
-    int px, py;
-    while (chance == 100 || rng(0, 99) < chance) {
-        float lets_spawn = spawn_rate;
-        while( rng_float( 0.0, 1.0 ) <= lets_spawn ) {
-            lets_spawn -= 1.0;
+    const float spawn_rate = get_world_option<float>( "ITEM_SPAWNRATE" );
+    int spawn_count = roll_remainder( chance * spawn_rate / 100.0f );
+    for( int i = 0; i < spawn_count; i++ ) {
+        // Might contain one item or several that belong together like guns & their ammo
+        int tries = 0;
+        auto is_valid_terrain = [this,ongrass](int x,int y){
+            auto &terrain = ter( x, y ).obj();
+            return terrain.movecost == 0           &&
+                   !terrain.has_flag("PLACE_ITEM") &&
+                   !ongrass                                   &&
+                   !terrain.has_flag("FLAT");
+        };
 
-            // Might contain one item or several that belong together like guns & their ammo
-            int tries = 0;
-            auto is_valid_terrain = [this,ongrass](int x,int y){
-                auto &terrain = ter( x, y ).obj();
-                return terrain.movecost == 0           &&
-                       !terrain.has_flag("PLACE_ITEM") &&
-                       !ongrass                                   &&
-                       !terrain.has_flag("FLAT");
-            };
-            do {
-                px = rng(x1, x2);
-                py = rng(y1, y2);
-                tries++;
-            } while ( is_valid_terrain(px,py) && tries < 20 );
-            if (tries < 20) {
-                auto put = put_items_from_loc( loc, tripoint( px, py, abs_sub.z ), turn );
-                res.insert( res.end(), put.begin(), put.end() );
-            }
-        }
-        if (chance == 100) {
-            break;
+        int px, py;
+        do {
+            px = rng(x1, x2);
+            py = rng(y1, y2);
+            tries++;
+        } while ( is_valid_terrain(px,py) && tries < 20 );
+        if (tries < 20) {
+            auto put = put_items_from_loc( loc, tripoint( px, py, abs_sub.z ), turn );
+            res.insert( res.end(), put.begin(), put.end() );
         }
     }
     for( auto e : res ) {
@@ -10402,6 +8722,7 @@ vehicle *map::add_vehicle(const vproto_id &type, const tripoint &p, const int di
  * otherwise returns a pointer to the placed vehicle, which may not necessarily
  * be the one passed in (if wreckage is created by fusing cars).
  * @param veh The vehicle to place on the map.
+ * @param merge_wrecks Whether crashed vehicles become part of each other
  * @return The vehicle that was finally placed.
  */
 vehicle *map::add_vehicle_to_map( std::unique_ptr<vehicle> veh, const bool merge_wrecks )
@@ -10539,41 +8860,53 @@ void map::rotate(int turns)
     }
 
     real_coords rc;
-    rc.fromabs(get_abs_sub().x*SEEX, get_abs_sub().y*SEEY);
+    const tripoint &abs_sub = get_abs_sub();
+    rc.fromabs( abs_sub.x * SEEX, abs_sub.y * SEEY );
 
+    // @todo This radius can be smaller - how small?
     const int radius = int(MAPSIZE / 2) + 3;
     // uses submap coordinates
-    std::vector<npc*> npcs = overmap_buffer.get_npcs_near_player(radius);
-    for (auto &i : npcs) {
-        npc *act_npc = i;
-        if (act_npc->global_omt_location().x*2 == get_abs_sub().x &&
-            act_npc->global_omt_location().y*2 == get_abs_sub().y ){
-                rc.fromabs(act_npc->global_square_location().x, act_npc->global_square_location().y);
-                int old_x = rc.sub_pos.x;
-                int old_y = rc.sub_pos.y;
-                if ( rc.om_sub.x % 2 != 0 )
-                    old_x += SEEX;
-                if ( rc.om_sub.y % 2 != 0 )
-                    old_y += SEEY;
-                int new_x = old_x;
-                int new_y = old_y;
-                switch(turns) {
-                    case 3:
-                        new_x = old_y;
-                        new_y = SEEX * 2 - 1 - old_x;
-                        break;
-                    case 2:
-                        new_x = SEEX * 2 - 1 - old_x;
-                        new_y = SEEY * 2 - 1 - old_y;
-                        break;
-                    case 1:
-                        new_x = SEEY * 2 - 1 - old_y;
-                        new_y = old_x;
-                        break;
-                    }
-                i->setx( i->posx() + new_x - old_x );
-                i->sety( i->posy() + new_y - old_y );
-            }
+    std::vector<npc*> npcs = overmap_buffer.get_npcs_near( abs_sub.x, abs_sub.y, abs_sub.z, radius );
+    for( npc *i : npcs ) {
+        npc &np = *i;
+        const tripoint sq = np.global_square_location();
+        real_coords np_rc;
+        np_rc.fromabs( sq.x, sq.y );
+        // Note: We are rotating the entire overmap square (2x2 of submaps)
+        if( np_rc.om_pos != rc.om_pos || sq.z != abs_sub.z ){
+            continue;
+        }
+
+        // OK, this is ugly: we remove the NPC from the whole map
+        // Then we place it back from scratch
+        // It could be rewritten to utilize the fact that rotation shouldn't cross overmaps
+        overmap_buffer.hide_npc( np.getID() );
+
+        int old_x = np_rc.sub_pos.x;
+        int old_y = np_rc.sub_pos.y;
+        if( np_rc.om_sub.x % 2 != 0 ) {
+            old_x += SEEX;
+        }
+        if( np_rc.om_sub.y % 2 != 0 ) {
+            old_y += SEEY;
+        }
+        int new_x = old_x;
+        int new_y = old_y;
+        switch( turns ) {
+            case 3:
+                new_x = old_y;
+                new_y = SEEX * 2 - 1 - old_x;
+                break;
+            case 2:
+                new_x = SEEX * 2 - 1 - old_x;
+                new_y = SEEY * 2 - 1 - old_y;
+                break;
+            case 1:
+                new_x = SEEY * 2 - 1 - old_y;
+                new_y = old_x;
+                break;
+        }
+        np.spawn_at_precise( { abs_sub.x, abs_sub.y }, { new_x, new_y, abs_sub.z } );
     }
     ter_id rotated [SEEX * 2][SEEY * 2];
     furn_id furnrot [SEEX * 2][SEEY * 2];
@@ -12561,10 +10894,11 @@ void mx_portal_in(map &m, const tripoint &abs_sub)
     } };
     int x = rng(5, SEEX * 2 - 6), y = rng(5, SEEY * 2 - 6);
     m.add_field({x, y, abs_sub.z}, fd_fatigue, 3, 0);
+    fungal_effects fe( *g, m );
     for (int i = x - 5; i <= x + 5; i++) {
         for (int j = y - 5; j <= y + 5; j++) {
             if (rng(1, 9) >= trig_dist(x, y, i, j)) {
-                m.marlossify( tripoint( i, j, abs_sub.z ) );
+                fe.marlossify( tripoint( i, j, abs_sub.z ) );
                 if (one_in(15)) {
                     m.add_spawn( random_entry( monids ), 1, i, j );
                 }

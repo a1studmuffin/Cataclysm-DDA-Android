@@ -337,7 +337,7 @@ bool game::dump_stats( const std::string& what, dump_mode mode, const std::vecto
         scol = -1; // unsorted output so graph columns have predictable ordering
 
         header = { "Name" };
-        for( int range = 1; range <= MAX_RANGE; ++range ) {
+        for( int range = 1; range <= RANGE_HARD_CAP; ++range ) {
             header.push_back( to_string( range ) );
         }
 
@@ -353,16 +353,16 @@ bool game::dump_stats( const std::string& what, dump_mode mode, const std::vecto
                 recoil -= adj;
             }
 
-            double dispersion = who.get_weapon_dispersion( gun ) + recoil;
-
             std::vector<std::string> r;
             r.push_back( string_format( "%s %s (%dmv aiming)", who.get_name().c_str(), gun.tname().c_str(), aim_moves ) );
 
-            for( int range = 1; range <= MAX_RANGE; ++range ) {
+            for( int range = 1; range <= RANGE_HARD_CAP; ++range ) {
                 if( range > gun.gun_range( &who ) ) {
                     r.push_back( "0" );
                     continue;
                 }
+
+                double dispersion = who.get_weapon_dispersion( gun, range ) + recoil;
 
                 // We want to find the long-run average damage per shot for this dispersion.
 
@@ -392,15 +392,17 @@ bool game::dump_stats( const std::string& what, dump_mode mode, const std::vecto
                 //    ∫(-∞,∞) x.f(x) dx
                 // See https://en.wikipedia.org/wiki/Expected_value#Univariate_continuous_random_variable
 
+                // Assume the NPC aims at an equal sized opponent
+                const double target_size = who.ranged_target_size();
                 // Find the probability of each type of hit
                 // nb: projectile_attack_chance returns the probabilty of a given accuracy _or better_
                 // but we want the probability of hits within each category separately, so subtract the
                 // probabilities at each edge.
-                double p_headshot = who.projectile_attack_chance( dispersion, range, accuracy_headshot );
-                double p_critical = who.projectile_attack_chance( dispersion, range, accuracy_critical ) - who.projectile_attack_chance( dispersion, range, accuracy_headshot );
-                double p_goodhit  = who.projectile_attack_chance( dispersion, range, accuracy_goodhit )  - who.projectile_attack_chance( dispersion, range, accuracy_critical );
-                double p_standard = who.projectile_attack_chance( dispersion, range, accuracy_standard ) - who.projectile_attack_chance( dispersion, range, accuracy_goodhit );
-                double p_grazing  = who.projectile_attack_chance( dispersion, range, accuracy_grazing )  - who.projectile_attack_chance( dispersion, range, accuracy_standard );
+                double p_headshot = who.projectile_attack_chance( dispersion, range, accuracy_headshot, target_size );
+                double p_critical = who.projectile_attack_chance( dispersion, range, accuracy_critical, target_size ) - who.projectile_attack_chance( dispersion, range, accuracy_headshot, target_size );
+                double p_goodhit  = who.projectile_attack_chance( dispersion, range, accuracy_goodhit, target_size )  - who.projectile_attack_chance( dispersion, range, accuracy_critical, target_size );
+                double p_standard = who.projectile_attack_chance( dispersion, range, accuracy_standard, target_size ) - who.projectile_attack_chance( dispersion, range, accuracy_goodhit, target_size );
+                double p_grazing  = who.projectile_attack_chance( dispersion, range, accuracy_grazing, target_size )  - who.projectile_attack_chance( dispersion, range, accuracy_standard, target_size );
                 // double p_miss = 1.0 - who.projectile_attack_chance( dispersion, range, accuracy_grazing );     not actually used below
 
                 // f(x) is the probabilty density function for the damage multiplier x

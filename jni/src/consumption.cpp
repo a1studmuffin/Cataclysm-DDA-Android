@@ -148,24 +148,7 @@ bool player::vitamin_set( const vitamin_id &vit, int qty )
 
 float player::metabolic_rate_base() const
 {
-    float ret = 1.0f;
-    if( has_trait( "LIGHTEATER" ) ) {
-        ret -= ( 1.0f / 3.0f );
-    }
-
-    if( has_trait( "HUNGER" ) ) {
-        ret += 0.5f;
-    } else if( has_trait( "HUNGER2" ) ) {
-        ret += 1.0f;
-    } else if( has_trait( "HUNGER3" ) ) {
-        ret += 2.0f;
-    }
-
-    if( has_trait( "MET_RAT" ) ) {
-        ret += ( 1.0f / 3.0f );
-    }
-
-    return ret;
+    return 1.0f + mutation_value( "metabolism_modifier" );
 }
 
 // TODO: Make this less chaotic to let NPC retroactive catch up work here
@@ -384,8 +367,16 @@ edible_rating player::can_eat( const item &food, bool interactive, bool force ) 
         overfull = !maybe_query( _( "You're full.  Force yourself to eat?" ) );
     } else if( ( ( nutr > 0 && temp_hunger < capacity ) ||
                  ( comest->quench > 0 && temp_thirst < capacity ) ) &&
-               !food.has_infinite_charges() && !eathealth && !slimespawner ) {
-        overfull = !maybe_query( _( "You will not be able to finish it all.  Consume it?" ) );
+               !food.has_infinite_charges() ) {
+        // This first section is only for flavor msg, skip if we wouldn't print anything
+        if( interactive &&
+            ( slimespawner ||
+              ( gourmand && has_active_mutation( "GOURMAND" ) ) ||
+              ( eathealth && has_active_mutation( "EATHEALTH" ) ) ) ) {
+            add_msg_if_player( _( "You're full, but you cram it into your mouth without a second thought." ) );
+        } else {
+            overfull = !maybe_query( _( "You will not be able to finish it all.  Consume it?" ) );
+        }
     }
 
     if( overfull ) {
@@ -1007,7 +998,9 @@ bool player::can_consume( const item &it ) const
     if( can_consume_as_is( it ) ) {
         return true;
     }
-    return !it.is_container_empty() && can_consume_as_is( it.contents.front() );
+    // checking NO_UNLOAD to prevent consumption of `battery` when contained in `battery_car` (#20012)
+    return !it.is_container_empty() && !it.has_flag( "NO_UNLOAD" ) &&
+           can_consume_as_is( it.contents.front() );
 }
 
 item &player::get_comestible_from( item &it ) const

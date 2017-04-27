@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ITYPE_H
 #define ITYPE_H
 
@@ -28,7 +29,8 @@
 // see item.h
 class item_category;
 class Item_factory;
-struct recipe;
+class recipe;
+
 struct itype;
 class Skill;
 using skill_id = string_id<Skill>;
@@ -230,7 +232,7 @@ struct islot_book {
         /**
          * The recipe that can be learned (never null).
          */
-        const struct recipe *recipe;
+        const class recipe *recipe;
         /**
          * The skill level required to learn the recipe.
          */
@@ -316,6 +318,13 @@ struct islot_wheel
 
         /** width of wheel (inches) */
         int width = 0;
+};
+
+struct islot_fuel
+{
+    public:
+        /** Energy of the fuel (kilojoules per charge) */
+        float energy = 0.0f;
 };
 
 // TODO: this shares a lot with the ammo item type, merge into a separate slot type?
@@ -515,7 +524,7 @@ struct islot_bionic {
      */
     int difficulty = 0;
     /**
-     * Id of the bionic, see @ref bionics.
+     * Id of the bionic, see bionics.cpp for its usage.
      */
     std::string bionic_id;
 };
@@ -574,6 +583,7 @@ struct itype {
     copyable_unique_ptr<islot_mod> mod;
     copyable_unique_ptr<islot_engine> engine;
     copyable_unique_ptr<islot_wheel> wheel;
+    copyable_unique_ptr<islot_fuel> fuel;
     copyable_unique_ptr<islot_gun> gun;
     copyable_unique_ptr<islot_gunmod> gunmod;
     copyable_unique_ptr<islot_magazine> magazine;
@@ -624,6 +634,9 @@ public:
     /** Is item destroyed after the countdown action is run? */
     bool countdown_destroy = false;
 
+    /** Action to take BEFORE the item is placed on map. If it returns non-zero, item won't be placed. */
+    use_function drop_action;
+
     /** Fields to emit when item is in active state */
     std::set<emit_id> emits;
 
@@ -661,6 +674,8 @@ public:
 
     /** Damage output in melee for zero or more damage types */
     std::array<int, NUM_DT> melee;
+    /** Base damage output when thrown */
+    damage_instance thrown_damage;
 
     int m_to_hit  = 0;  // To-hit bonus for melee combat; -5 to 5 is reasonable
 

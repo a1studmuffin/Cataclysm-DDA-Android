@@ -127,13 +127,6 @@ void Creature::reset_bonuses()
     throw_resist = 0;
 }
 
-void Creature::reset_stats()
-{
-    // "Creatures" have no stats!
-    // This only exists to simplify cleanup
-    // TODO: Make this not exist
-}
-
 void Creature::process_turn()
 {
     if(is_dead_state()) {
@@ -393,9 +386,28 @@ void Creature::melee_attack(Creature &t, bool allow_special)
  * Damage-related functions
  */
 
+int size_melee_penalty( m_size target_size )
+{
+    switch( target_size ) {
+        case MS_TINY:
+            return 30;
+        case MS_SMALL:
+            return 15;
+        case MS_MEDIUM:
+            return 0;
+        case MS_LARGE:
+            return -10;
+        case MS_HUGE:
+            return -20;
+    }
+
+    debugmsg( "Invalid target size %d", target_size );
+    return 0;
+}
+
 int Creature::deal_melee_attack( Creature *source, int hitroll )
 {
-    int hit_spread = hitroll - dodge_roll();
+    int hit_spread = hitroll - dodge_roll() - size_melee_penalty( get_size() );
 
     // If attacker missed call targets on_dodge event
     if( hit_spread <= 0 && !source->is_hallucination() ) {
@@ -778,15 +790,6 @@ bool Creature::is_fake() const
 void Creature::set_fake(const bool fake_value)
 {
     fake = fake_value;
-}
-
-/*
- * Effect-related methods
- */
-bool Creature::move_effects(bool attacking)
-{
-    (void)attacking;
-    return true;
 }
 
 void Creature::add_eff_effects(effect e, bool reduced)

@@ -26,30 +26,36 @@ extern bool test_mode;
 
 const mtype_id mon_generator( "mon_generator" );
 
+/** @relates string_id */
 template<>
 const mtype_id string_id<mtype>::NULL_ID( "mon_null" );
 
+/** @relates string_id */
 template<>
 const mtype& string_id<mtype>::obj() const
 {
     return MonsterGenerator::generator().mon_templates->obj( *this );
 }
 
+/** @relates string_id */
 template<>
 bool string_id<mtype>::is_valid() const
 {
     return MonsterGenerator::generator().mon_templates->is_valid( *this );
 }
 
+/** @relates string_id */
 template<>
 const species_id string_id<species_type>::NULL_ID( "spec_null" );
 
+/** @relates string_id */
 template<>
 const species_type& string_id<species_type>::obj() const
 {
     return MonsterGenerator::generator().mon_species->obj( *this );
 }
 
+/** @relates string_id */
 template<>
 bool string_id<species_type>::is_valid() const
 {
@@ -85,6 +91,11 @@ void MonsterGenerator::reset()
     mon_species->insert( species_type() );
 
     hallucination_monsters.clear();
+
+    attack_map.clear();
+    // Hardcode attacks need to be re-added here
+    // @todo Move initialization from constructor to init()
+    init_attack();
 }
 
 static int calc_bash_skill( const mtype &t )
@@ -413,6 +424,7 @@ void MonsterGenerator::init_flags()
     flag_map["NO_BREATHE"] = MF_NO_BREATHE;
     flag_map["REGENERATES_50"] = MF_REGENERATES_50;
     flag_map["REGENERATES_10"] = MF_REGENERATES_10;
+    flag_map["REGENERATES_IN_DARK"] = MF_REGENERATES_IN_DARK;
     flag_map["FLAMMABLE"] = MF_FLAMMABLE;
     flag_map["REVIVES"] = MF_REVIVES;
     flag_map["CHITIN"] = MF_CHITIN;

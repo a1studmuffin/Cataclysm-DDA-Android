@@ -12,6 +12,7 @@
 #include "worldfactory.h"
 #include "catacharset.h"
 #include "game_constants.h"
+#include "string_input_popup.h"
 
 #ifdef TILES
 #include "cata_tiles.h"
@@ -316,7 +317,7 @@ bool options_manager::cOpt::is_hidden() const
 #endif
 
     case COPT_CURSES_HIDE:
-#ifndef TILES // If not defined. it's curses interface.
+#ifndef TILES // If not defined.  it's curses interface.
         return true;
 #else
         return false;
@@ -417,7 +418,12 @@ std::string options_manager::cOpt::getValue() const
         return string_format( format, iSet );
 
     } else if (sType == "float") {
-        return string_format( format, fSet );
+        std::ostringstream ssTemp;
+        ssTemp.imbue( std::locale::classic() );
+        ssTemp.precision( 2 );
+        ssTemp.setf( std::ios::fixed, std::ios::floatfield );
+        ssTemp << fSet;
+        return ssTemp.str();
     }
 
     return "";
@@ -538,9 +544,11 @@ void options_manager::cOpt::setNext()
 
     } else if (sType == "string_input") {
         int iMenuTextLength = sMenuText.length();
-        sSet = string_input_popup("", (iMaxLength > 80) ? 80 : ((iMaxLength < iMenuTextLength) ? iMenuTextLength : iMaxLength+1),
-                                  sSet, sMenuText, "", iMaxLength
-                                 );
+        string_input_popup()
+        .width( ( iMaxLength > 80 ) ? 80 : ( ( iMaxLength < iMenuTextLength ) ? iMenuTextLength : iMaxLength + 1) )
+        .description( sMenuText )
+        .max_length( iMaxLength )
+        .edit( sSet );
 
     } else if (sType == "bool") {
         bSet = !bSet;
@@ -800,22 +808,27 @@ void options_manager::init()
     mOptionsSort["general"]++;
 
     add("AUTO_PICKUP", "general", _("Auto pickup enabled"),
-        _("Enable item auto pickup. Change pickup rules with the Auto Pickup Manager in the Help Menu ?3"),
+        _("Enable item auto pickup.  Change pickup rules with the Auto Pickup Manager in the Help Menu ?3"),
         false
         );
 
     add("AUTO_PICKUP_ADJACENT", "general", _("Auto pickup adjacent"),
-        _("If true, will enable to pickup items one tile around to the player. You can assign No Auto Pickup zones with the Zones Manager 'Y' key for eg. your homebase."),
+        _("If true, will enable to pickup items one tile around to the player.  You can assign No Auto Pickup zones with the Zones Manager 'Y' key for eg.  your homebase."),
         false
         );
 
-    add("AUTO_PICKUP_ZERO", "general", _("Auto pickup 0 vol light items"),
-        _("Auto pickup items with 0 Volume, and weight less than or equal to [option] * 50 grams. '0' disables this option"),
+    add("AUTO_PICKUP_WEIGHT_LIMIT", "general", _("Auto pickup light items"),
+        _("Auto pickup items with weight less than or equal to [option] * 50 grams.  You must also set the small items option.  '0' disables this option"),
+        0, 20, 0
+        );
+
+    add("AUTO_PICKUP_VOL_LIMIT", "general", _("Auto pickup small items"),
+        _("Auto pickup items with volume less than or equal to [option] * 50 milliliters.  You must also set the light items option.  '0' disables this option"),
         0, 20, 0
         );
 
     add("AUTO_PICKUP_SAFEMODE", "general", _("Auto pickup safe mode"),
-        _("Auto pickup is disabled as long as you can see monsters nearby. This is affected by 'Safe Mode proximity distance'."),
+        _("Auto pickup is disabled as long as you can see monsters nearby.  This is affected by 'Safe Mode proximity distance'."),
         false
         );
 
@@ -829,7 +842,7 @@ void options_manager::init()
     mOptionsSort["general"]++;
 
     add("AUTOSAFEMODE", "general", _("Auto-safe mode"),
-        _("If true, turns safemode automatically back on after it being disabled beforehand. See option 'Turns to re-enable safe mode'"),
+        _("If true, turns safemode automatically back on after it being disabled beforehand.  See option 'Turns to re-enable safe mode'"),
         false
         );
 
@@ -844,7 +857,7 @@ void options_manager::init()
         );
 
     add("SAFEMODEPROXIMITY", "general", _("Safe Mode proximity distance"),
-        _("If safe mode is enabled, distance to hostiles at which safe mode should show a warning. 0 = Max player viewdistance."),
+        _("If safe mode is enabled, distance to hostiles at which safe mode should show a warning.  0 = Max player viewdistance."),
         0, MAX_VIEW_DISTANCE, 0
         );
 
@@ -856,14 +869,14 @@ void options_manager::init()
     mOptionsSort["general"]++;
 
     add("TURN_DURATION", "general", _("Realtime turn progression"),
-        _("If enabled, monsters will take periodic gameplay turns. This value is the delay between each turn, in seconds. Works best with Safe Mode disabled. 0 = disabled."),
+        _("If enabled, monsters will take periodic gameplay turns.  This value is the delay between each turn, in seconds.  Works best with Safe Mode disabled.  0 = disabled."),
         0.0, 10.0, 0.0, 0.05
         );
 
     mOptionsSort["general"]++;
 
     add("AUTOSAVE", "general", _("Periodically autosave"),
-        _("If true, game will periodically save the map. Autosaves occur based on in-game turns or real-time minutes, whichever is larger."),
+        _("If true, game will periodically save the map.  Autosaves occur based on in-game turns or real-time minutes, whichever is larger."),
         false
         );
 
@@ -880,7 +893,7 @@ void options_manager::init()
     mOptionsSort["general"]++;
 
     add("CIRCLEDIST", "general", _("Circular distances"),
-        _("If true, the game will calculate range in a realistic way: light sources will be circles, diagonal movement will cover more ground and take longer. If disabled, everything is square: moving to the northwest corner of a building takes as long as moving to the north wall."),
+        _("If true, the game will calculate range in a realistic way: light sources will be circles, diagonal movement will cover more ground and take longer.  If disabled, everything is square: moving to the northwest corner of a building takes as long as moving to the north wall."),
         false
         );
 
@@ -889,7 +902,7 @@ void options_manager::init()
     optionNames["watertight"] = _("Watertight");
     optionNames["all"] = _("All");
     add("DROP_EMPTY", "general", _("Drop empty containers"),
-        _("Set to drop empty containers after use. No: Don't drop any. - Watertight: All except watertight containers. - All: Drop all containers."),
+        _("Set to drop empty containers after use.  No: Don't drop any. - Watertight: All except watertight containers. - All: Drop all containers."),
         "no,watertight,all", "no"
         );
 
@@ -902,7 +915,7 @@ void options_manager::init()
     optionNames["always"]   = _("Always");
     optionNames["never"]    = _("Never");
     add("DEATHCAM", "general", _("DeathCam"),
-        _("Always: Always start deathcam. Ask: Query upon death. Never: Never show deathcam."),
+        _("Always: Always start deathcam.  Ask: Query upon death.  Never: Never show deathcam."),
         "always,ask,never", "ask"
         );
 
@@ -978,11 +991,11 @@ void options_manager::init()
         "c,l,qt", "l"
         );
 
-    //~ 12h time, e.g. 11:59pm
+    //~ 12h time, e.g.  11:59pm
     optionNames["12h"] = _("12h");
-    //~ Military time, e.g. 2359
+    //~ Military time, e.g.  2359
     optionNames["military"] = _("Military");
-    //~ 24h time, e.g. 23:59
+    //~ 24h time, e.g.  23:59
     optionNames["24h"] = _("24h");
     add("24_HOUR", "interface", _("Time format"),
         _("12h: AM/PM, eg: 7:31 AM - Military: 24h Military, eg: 0731 - 24h: Normal 24h, eg: 7:31"),
@@ -1049,7 +1062,7 @@ void options_manager::init()
     optionNames["left"] = _("Left");
     optionNames["right"] = _("Right");
     add("SIDEBAR_POSITION", "interface", _("Sidebar position"),
-        _("Switch between sidebar on the left or on the right side. Requires restart."),
+        _("Switch between sidebar on the left or on the right side.  Requires restart."),
         "left,right", "right"
         );
 
@@ -1057,7 +1070,7 @@ void options_manager::init()
     optionNames["wider"] = _("Wider");
     optionNames["narrow"] = _("Narrow");
     add("SIDEBAR_STYLE", "interface", _("Sidebar style"),
-        _("Switch between a narrower or wider sidebar. Requires restart."),
+        _("Switch between a narrower or wider sidebar.  Requires restart."),
         "wider,narrow", "narrow"
         );
 
@@ -1070,8 +1083,16 @@ void options_manager::init()
         );
 
     add("MESSAGE_TTL", "interface", _("Sidebar log message display duration"),
-        _("Number of turns after which a message will be removed from the sidebar log. '0' disables this option."),
+        _("Number of turns after which a message will be removed from the sidebar log.  '0' disables this option."),
         0, 1000, 0
+        );
+
+    //~ aim bar style - bars or numbers
+    optionNames["numbers"] = _("Numbers");
+    optionNames["bars"] = _("Bars");
+    add("ACCURACY_DISPLAY", "interface", _("Aim window display style"),
+        _("How should confidence and steadiness be communicated to the player."),
+        "numbers,bars", "bars"
         );
 
     mOptionsSort["interface"]++;
@@ -1123,7 +1144,7 @@ void options_manager::init()
     //~ hide mouse cursor when keyboard is used
     optionNames["hidekb"] = _("HideKB");
     add("HIDE_CURSOR", "interface", _("Hide mouse cursor"),
-        _("Show: Cursor is always shown. Hide: Cursor is hidden. HideKB: Cursor is hidden on keyboard input and unhidden on mouse movement."),
+        _("Show: Cursor is always shown.  Hide: Cursor is hidden.  HideKB: Cursor is hidden on keyboard input and unhidden on mouse movement."),
         "show,hide,hidekb", "show", COPT_CURSES_HIDE
         );
 
@@ -1156,12 +1177,12 @@ void options_manager::init()
     mOptionsSort["graphics"]++;
 
     add("TERMINAL_X", "graphics", _("Terminal width"),
-        _("Set the size of the terminal along the X axis. Requires restart."),
+        _("Set the size of the terminal along the X axis.  Requires restart."),
         80, 242, 80, COPT_POSIX_CURSES_HIDE
         );
 
     add("TERMINAL_Y", "graphics", _("Terminal height"),
-        _("Set the size of the terminal along the Y axis. Requires restart."),
+        _("Set the size of the terminal along the Y axis.  Requires restart."),
         24, 187, 24, COPT_POSIX_CURSES_HIDE
         );
 
@@ -1185,12 +1206,12 @@ void options_manager::init()
         ); // populate the options dynamically
 
     add("PIXEL_MINIMAP", "graphics", _("Pixel Minimap"),
-        _("If true, shows the pixel-detail minimap in game after the save is loaded. Use the 'Toggle Pixel Minimap' action key to change its visibility during gameplay."),
+        _("If true, shows the pixel-detail minimap in game after the save is loaded.  Use the 'Toggle Pixel Minimap' action key to change its visibility during gameplay."),
         true, COPT_CURSES_HIDE
         );
 
     add("PIXEL_MINIMAP_HEIGHT", "graphics", _("Pixel Minimap height"),
-        _("Height of pixel-detail minimap, measured in terminal rows. Set to 0 for default spacing."),
+        _("Height of pixel-detail minimap, measured in terminal rows.  Set to 0 for default spacing."),
         0, 100, 0, COPT_CURSES_HIDE
         );
 
@@ -1200,7 +1221,7 @@ void options_manager::init()
         );
 
     add("PIXEL_MINIMAP_BLINK", "graphics", _("Enemy beacon blink speed"),
-        _("Controls how fast the enemy beacons blink on the pixel minimap. Value is multiplied by 200 ms. Set to 0 to disable."),
+        _("Controls how fast the enemy beacons blink on the pixel minimap.  Value is multiplied by 200 ms.  Set to 0 to disable."),
         0, 50, 10, COPT_CURSES_HIDE
         );
 
@@ -1208,19 +1229,19 @@ void options_manager::init()
 
 
     add("DISPLAY", "graphics", _("Display"),
-        _("Sets which video display will be used to show the game. Requires restart."),
+        _("Sets which video display will be used to show the game.  Requires restart."),
         0, 10000, 0, COPT_CURSES_HIDE
         );
 
-#ifndef __ANDROID__
++#ifndef __ANDROID__
     optionNames["fullscreen"] = _("Fullscreen");
     optionNames["windowedbl"] = _("Windowed borderless");
     add("FULLSCREEN", "graphics", _("Fullscreen"),
-        _("Starts Cataclysm in one of the fullscreen modes. Requires restart."),
+        _("Starts Cataclysm in one of the fullscreen modes.  Requires restart."),
         "no,fullscreen,windowedbl", "no", COPT_CURSES_HIDE
         );
-#endif
-    
++#endif
+
     add("SOFTWARE_RENDERING", "graphics", _("Software rendering"),
         _("Use software renderer instead of graphics card acceleration."),
         false, COPT_CURSES_HIDE
@@ -1268,7 +1289,7 @@ void options_manager::init()
     mOptionsSort["debug"]++;
 
     add("SKILL_TRAINING_SPEED", "debug", _("Skill training speed"),
-        _("Scales experience gained from practicing skills and reading books. 0.5 is half as fast as default, 2.0 is twice as fast, 0.0 disables skill training except for NPC training."),
+        _("Scales experience gained from practicing skills and reading books.  0.5 is half as fast as default, 2.0 is twice as fast, 0.0 disables skill training except for NPC training."),
         0.0, 100.0, 1.0, 0.1
         );
 
@@ -1284,15 +1305,38 @@ void options_manager::init()
     optionNames["intcap"] = _("IntCap");
     optionNames["off"] = _("Off");
     add("SKILL_RUST", "debug", _("Skill rust"),
-        _("Set the level of skill rust. Vanilla: Vanilla Cataclysm - Capped: Capped at skill levels 2 - Int: Intelligence dependent - IntCap: Intelligence dependent, capped - Off: None at all."),
+        _("Set the level of skill rust.  Vanilla: Vanilla Cataclysm - Capped: Capped at skill levels 2 - Int: Intelligence dependent - IntCap: Intelligence dependent, capped - Off: None at all."),
         "vanilla,capped,int,intcap,off", "off"
         );
 
     mOptionsSort["debug"]++;
 
     add("FOV_3D", "debug", _("Experimental 3D Field of Vision"),
-        _("If false, vision is limited to current z-level. If true and the world is in z-level mode, the vision will extend beyond current z-level. Currently very bugged!"),
+        _("If false, vision is limited to current z-level.  If true and the world is in z-level mode, the vision will extend beyond current z-level.  Currently very bugged!"),
         false
+        );
+
+    add("ENCODING_CONV", "debug", _("Experimental path name encoding conversion"),
+        _("If true, file path names are going to be transcoded from system encoding to UTF-8 when reading and will be transcoded back when writing.  Mainly for CJK Windows users."),
+        true
+        );
+    
+    mOptionsSort["debug"]++;
+    
+    add("OVERMAP_GENERATION_TRIES", "debug", _("Overmap generation attempt count"),
+        _("Maximum number of retries in overmap generation due to inability to place mandatory special locations.  High numbers and strange world settings will lead to VERY slow generation!"),
+        1, 20, 2
+        );
+
+    //~ allow invalid (bugged, bad) maps without asking user
+    optionNames["allow_invalid"] = _("Any");
+    //~ allow any valid map, even if it's "bad"
+    optionNames["ask_invalid"] = _("Valid");
+    //~ ask for lifting restrictions
+    optionNames["ask_unlimited"] = _("Ask");
+    add("ALLOW_INVALID_OVERMAPS", "debug", _("Allow invalid overmaps"),
+        _("What to do if world settings/mods prevent valid overmaps.  Invalid maps are BUGGED and while playable, may cause errors during missions.  Unlimited maps will look ugly, but are fully functional."),
+        "allow_invalid,ask_invalid,ask_unlimited", "ask_invalid"
         );
 
     ////////////////////////////WORLD DEFAULT////////////////////
@@ -1314,12 +1358,12 @@ void options_manager::init()
     mOptionsSort["world_default"]++;
 
     add("CITY_SIZE", "world_default", _("Size of cities"),
-        _("A number determining how large cities are. 0 disables cities and roads."),
+        _("A number determining how large cities are.  0 disables cities and roads."),
         0, 16, 4
         );
 
     add("CITY_SPACING", "world_default", _("City spacing"),
-        _("A number determining how far apart cities are. Warning, small numbers lead to very slow mapgen."),
+        _("A number determining how far apart cities are.  Warning, small numbers lead to very slow mapgen."),
         0, 8, 4
         );
 
@@ -1339,19 +1383,19 @@ void options_manager::init()
         );
 
     add("MONSTER_UPGRADE_FACTOR", "world_default", _("Monster evolution scaling factor"),
-        _("A scaling factor that determines the time between monster upgrades. A higher number means slower evolution. Set to 0.00 to turn off monster upgrades."),
+        _("A scaling factor that determines the time between monster upgrades.  A higher number means slower evolution.  Set to 0.00 to turn off monster upgrades."),
         0.0, 100, 4.0, 0.01
         );
 
     mOptionsSort["world_default"]++;
 
     add("MONSTER_SPEED", "world_default", _("Monster speed"),
-        _("Determines the movement rate of monsters. A higher value increases monster speed and a lower reduces it."),
+        _("Determines the movement rate of monsters.  A higher value increases monster speed and a lower reduces it."),
         1, 1000, 100, COPT_NO_HIDE, "%i%%"
         );
 
     add("MONSTER_RESILIENCE", "world_default", _("Monster resilience"),
-        _("Determines how much damage monsters can take. A higher value makes monsters more resilient and a lower makes them more flimsy."),
+        _("Determines how much damage monsters can take.  A higher value makes monsters more resilient and a lower makes them more flimsy."),
         1, 1000, 100, COPT_NO_HIDE, "%i%%"
         );
 
@@ -1376,7 +1420,7 @@ void options_manager::init()
     optionNames["autumn"] = _("Autumn");
     optionNames["winter"] = _("Winter");
     add("INITIAL_SEASON", "world_default", _("Initial season"),
-        _("Season the player starts in. Options other than the default delay spawn of the character, so food decay and monster spawns will have advanced."),
+        _("Season the player starts in.  Options other than the default delay spawn of the character, so food decay and monster spawns will have advanced."),
         "spring,summer,autumn,winter", "spring"
         );
 
@@ -1386,7 +1430,7 @@ void options_manager::init()
         );
 
     add("CONSTRUCTION_SCALING", "world_default", _("Construction scaling"),
-        _("Multiplies the speed of construction by the given percentage. '0' automatically scales construction to match the world's season length."),
+        _("Sets the time of construction in percents.  '50' is two times faster than default, '200' is two times longer.  '0' automatically scales construction time to match the world's season length."),
         0, 1000, 100
         );
 
@@ -1397,23 +1441,18 @@ void options_manager::init()
 
     mOptionsSort["world_default"]++;
 
-    add("STATIC_SPAWN", "world_default", _("Static spawn"),
-        _("Spawn zombies at game start instead of during game. Must reset world directory after changing for it to take effect."),
-        true
-        );
-
     add("WANDER_SPAWNS", "world_default", _("Wander spawns"),
-        _("Emulation of zombie hordes. Zombie spawn points wander around cities and may go to noise. Must reset world directory after changing for it to take effect."),
+        _("Emulation of zombie hordes.  Zombie spawn points wander around cities and may go to noise.  Must reset world directory after changing for it to take effect."),
         false
         );
 
     add("CLASSIC_ZOMBIES", "world_default", _("Classic zombies"),
-        _("Only spawn classic zombies and natural wildlife. Requires a reset of save folder to take effect. This disables certain buildings."),
+        _("Only spawn classic zombies and natural wildlife.  Requires a reset of save folder to take effect.  This disables certain buildings."),
         false
         );
 
     add("BLACK_ROAD", "world_default", _("Surrounded start"),
-        _("If true, spawn zombies at shelters. Makes the starting game a lot harder."),
+        _("If true, spawn zombies at shelters.  Makes the starting game a lot harder."),
         false
         );
 
@@ -1439,7 +1478,7 @@ void options_manager::init()
     mOptionsSort["world_default"]++;
 
     add("ZLEVELS", "world_default", _("Experimental z-levels"),
-        _("If true, experimental z-level maps will be enabled. This feature is not finished yet and turning it on will only slow the game down."),
+        _("If true, experimental z-level maps will be enabled.  This feature is not finished yet and turning it on will only slow the game down."),
         false
         );
 
@@ -1461,6 +1500,13 @@ void options_manager::init()
 
     add("FILTHY_MORALE", "world_default", _("Morale penalty for filthy clothing."),
         _("If true, wearing filthy clothing will cause morale penalties."),
+        false, COPT_ALWAYS_HIDE
+        );
+
+    mOptionsSort["world_default"]++;
+
+    add("FILTHY_WOUNDS", "world_default", _("Infected wounds from filthy clothing."),
+        _("If true, getting hit in a body part covered in filthy clothing may cause infections."),
         false, COPT_ALWAYS_HIDE
         );
 
@@ -2042,8 +2088,12 @@ void options_manager::show(bool ingame)
                 const bool is_int = cur_opt.getType() == "int";
                 const bool is_float = cur_opt.getType() == "float";
                 const std::string old_opt_val = cur_opt.getValueName();
-                const std::string opt_val = string_input_popup(
-                                                cur_opt.getMenuText(), 80, old_opt_val, "", "", -1, is_int);
+                const std::string opt_val = string_input_popup()
+                                            .title( cur_opt.getMenuText() )
+                                            .width( 10 )
+                                            .text( old_opt_val )
+                                            .only_digits( is_int )
+                                            .query_string();
                 if (!opt_val.empty() && opt_val != old_opt_val) {
                     if (is_float) {
                         std::istringstream ssTemp(opt_val);

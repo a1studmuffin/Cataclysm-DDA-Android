@@ -1,3 +1,4 @@
+#pragma once
 #ifndef PLAYER_ACTIVITY_H
 #define PLAYER_ACTIVITY_H
 
@@ -16,6 +17,7 @@ class activity_type;
 
 using activity_id = string_id<activity_type>;
 
+/** @relates string_id */
 template<>
 const activity_type &string_id<activity_type>::obj() const;
 

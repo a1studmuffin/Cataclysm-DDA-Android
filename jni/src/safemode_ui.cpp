@@ -14,7 +14,7 @@
 #include "generic_factory.h"
 #include "worldfactory.h"
 #include "monstergenerator.h"
-#include "debug.h"
+#include "string_input_popup.h"
 
 #include <stdlib.h>
 #include <fstream>
@@ -304,8 +304,11 @@ void safemode::show( const std::string &custom_name_in, bool is_safemode_in )
 
                 draw_border( w_help );
                 wrefresh( w_help );
-                current_tab[line].rule = wildcard_trim_rule( string_input_popup( _( "Safe Mode Rule:" ),
-                                         30, current_tab[line].rule ) );
+                current_tab[line].rule = wildcard_trim_rule( string_input_popup()
+                                         .title( _( "Safe Mode Rule:" ) )
+                                         .width( 30 )
+                                         .text( current_tab[line].rule )
+                                         .query_string() );
             } else if( column == COLUMN_WHITE_BLACKLIST ) {
                 current_tab[line].whitelist = !current_tab[line].whitelist;
             } else if( column == COLUMN_ATTITUDE ) {
@@ -324,15 +327,15 @@ void safemode::show( const std::string &custom_name_in, bool is_safemode_in )
                         attitude = Creature::A_HOSTILE;
                 }
             } else if( column == COLUMN_PROXIMITY && !current_tab[line].whitelist ) {
-                const auto text = string_input_popup( _( "Proximity Distance (0=max viewdistance)" ),
-                                                      4,
-                                                      to_string( current_tab[line].proximity ),
-                                                      _( "Option: " ) + to_string( get_option<int>( "SAFEMODEPROXIMITY" ) ) +
-                                                      " " + get_options().get_option( "SAFEMODEPROXIMITY" ).getDefaultText(),
-                                                      "",
-                                                      3,
-                                                      true
-                                                    );
+                const auto text = string_input_popup()
+                                  .title( _( "Proximity Distance (0=max viewdistance)" ) )
+                                  .width( 4 )
+                                  .text( to_string( current_tab[line].proximity ) )
+                                  .description( _( "Option: " ) + to_string( get_option<int>( "SAFEMODEPROXIMITY" ) ) +
+                                                " " + get_options().get_option( "SAFEMODEPROXIMITY" ).getDefaultText() )
+                                  .max_length( 3 )
+                                  .only_digits( true )
+                                  .query_string();
                 if( text.empty() ) {
                     current_tab[line].proximity = get_option<int>( "SAFEMODEPROXIMITY" );
                 } else {
@@ -634,14 +637,10 @@ bool safemode::save( const bool is_character_in )
     if( is_character ) {
         file = world_generator->active_world->world_path + "/" + base64_encode(
                    g->u.name ) + ".sfm.json";
-        std::ifstream fin;
-
-        fin.open( ( world_generator->active_world->world_path + "/" +
-                    base64_encode( g->u.name ) + ".sav" ).c_str() );
-        if( !fin.is_open() ) {
+        if( !file_exist( world_generator->active_world->world_path + "/" +
+                         base64_encode( g->u.name ) + ".sav" ) ) {
             return true; //Character not saved yet.
         }
-        fin.close();
     }
 
     return write_to_file( file, [&]( std::ostream & fout ) {

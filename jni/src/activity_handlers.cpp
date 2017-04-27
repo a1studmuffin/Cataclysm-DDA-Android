@@ -35,7 +35,6 @@
 
 #define dbg(x) DebugLog((DebugLevel)(x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
 
-const skill_id skill_carpentry( "carpentry" );
 const skill_id skill_survival( "survival" );
 const skill_id skill_firstaid( "firstaid" );
 
@@ -135,8 +134,6 @@ void activity_handlers::burrow_finish( player_activity *act, player *p )
         p->mod_thirst( 10 );
         p->mod_fatigue( 15 );
         p->mod_pain( 3 * rng( 1, 3 ) );
-        // Mining is construction work!
-        p->practice( skill_carpentry, 5 );
     } else if( g->m.move_cost( pos ) == 2 && g->get_levz() == 0 &&
                g->m.ter( pos ) != t_dirt && g->m.ter( pos ) != t_grass ) {
         //Breaking up concrete on the surface? not nearly as bad
@@ -1126,8 +1123,6 @@ void activity_handlers::pickaxe_finish( player_activity *act, player *p )
             p->mod_fatigue( 30 );
         }
         p->mod_pain( 2 * rng( 1, 3 ) );
-        // Mining is construction work!
-        p->practice( skill_carpentry, 5 );
     } else if( g->m.move_cost(pos) == 2 && g->get_levz() == 0 &&
                g->m.ter(pos) != t_dirt && g->m.ter(pos) != t_grass ) {
         //Breaking up concrete on the surface? not nearly as bad
@@ -1531,11 +1526,13 @@ repeat_type repeat_menu( const std::string &title, repeat_type last_selection )
 {
     uimenu rmenu;
     rmenu.text = title;
+    rmenu.return_invalid = true;
+    
     rmenu.addentry( REPEAT_ONCE, true, '1', _("Repeat once") );
     rmenu.addentry( REPEAT_FOREVER, true, '2', _("Repeat as long as you can") );
     rmenu.addentry( REPEAT_FULL, true, '3', _("Repeat until fully repaired, but don't reinforce") );
     rmenu.addentry( REPEAT_EVENT, true, '4', _("Repeat until success/failure/level up") );
-    rmenu.addentry( REPEAT_CANCEL, true, 'q', _("Cancel") );
+    
     rmenu.selected = last_selection;
 
     rmenu.query();
