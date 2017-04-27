@@ -1,3 +1,4 @@
+#pragma once
 #ifndef VITAMIN_H
 #define VITAMIN_H
 
@@ -53,7 +54,7 @@ class vitamin
             return rate_;
         }
 
-        /** Get intensity of deficiency or zero if not deficient for this @ref qty */
+        /** Get intensity of deficiency or zero if not deficient for specified qty */
         int severity( int qty ) const;
 
         /** Load vitamin from JSON definition */

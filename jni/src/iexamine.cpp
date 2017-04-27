@@ -2,6 +2,7 @@
 #include "game.h"
 #include "harvest.h"
 #include "map.h"
+#include "fungal_effects.h"
 #include "map_iterator.h"
 #include "debug.h"
 #include "mapdata.h"
@@ -28,6 +29,7 @@
 #include "weather.h"
 #include "sounds.h"
 #include "cata_utility.h"
+#include "string_input_popup.h"
 
 #include <sstream>
 #include <algorithm>
@@ -42,8 +44,8 @@ const mtype_id mon_turret( "mon_turret" );
 const mtype_id mon_turret_rifle( "mon_turret_rifle" );
 
 const skill_id skill_computer( "computer" );
+const skill_id skill_fabrication( "fabrication" );
 const skill_id skill_mechanics( "mechanics" );
-const skill_id skill_carpentry( "carpentry" );
 const skill_id skill_cooking( "cooking" );
 const skill_id skill_survival( "survival" );
 
@@ -254,8 +256,12 @@ private:
     //! Prompt for an integral value clamped to [0, max].
     static long prompt_for_amount(char const *const msg, long const max) {
         const std::string formatted = string_format(msg, max);
-        const int amount = std::atol(string_input_popup(
-            formatted, 20, to_string(max), "", "", -1, true).c_str());
+        const long amount = string_input_popup()
+                            .title( formatted )
+                            .width( 20 )
+                            .text( to_string( max ) )
+                            .only_digits( true )
+                            .query_long();
 
         return (amount > max) ? max : (amount <= 0) ? 0 : amount;
     };
@@ -810,7 +816,45 @@ void iexamine::portable_structure(player &p, const tripoint &examp)
         dropped = "null";
     }
 
-    if( !query_yn(_("Take down the %s?"), name.c_str() ) ) {
+    auto check_tent_intact = [&]() -> bool {
+        int radius = dropped == "large_tent_kit" ? 2 : 1;
+        furn_id floor =
+            dropped == "tent_kit" ? f_groundsheet : f_large_groundsheet;
+        furn_id wall =
+            dropped == "tent_kit" ? f_canvas_wall : f_large_canvas_wall;
+        furn_id door =
+            dropped == "tent_kit" ? f_canvas_door : f_large_canvas_door;
+        furn_id door_opened =
+            dropped == "tent_kit" ? f_canvas_door_o : f_large_canvas_door_o;
+        furn_id center_floor =
+            dropped == "large_tent_kit" ? f_center_groundsheet : floor;
+        // Traversing all the tiles this tent occupies
+        for( int i = -radius; i <= radius; i++ ) {
+            for( int j = -radius; j <= radius; j++ ) {
+                const furn_id &furn_here = g->m.furn( examp.x + i, examp.y + j );
+                if( i != -radius && i != radius && j != -radius && j != radius ) {
+                    // So we are inside the tent
+                    if( furn_here != floor && furn_here != center_floor ) {
+                        return false;
+                    }
+                } else if( furn_here != wall && furn_here != door && furn_here != door_opened ) {
+                    // We are on the border of the tent
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    if( name == "tent" && !check_tent_intact() ) {
+        if( dropped == "tent_kit" ) {
+            dropped = "broketent";
+        } else {
+            dropped = "largebroketent";
+        }
+    }
+
+    if( !query_yn( _( "Take down the %s?" ), _( name.c_str() ) ) ) {
         none( p, examp );
         return;
     }
@@ -1566,7 +1610,7 @@ void iexamine::egg_sackws( player &p, const tripoint &examp )
 void iexamine::fungus(player &p, const tripoint &examp)
 {
     add_msg(_("The %s crumbles into spores!"), g->m.furnname(examp).c_str());
-    g->m.create_spores( examp, &p );
+    fungal_effects( *g, g->m ).create_spores( examp, &p );
     g->m.furn_set(examp, f_null);
     p.moves -= 50;
 }
@@ -1845,8 +1889,8 @@ void iexamine::kiln_empty(player &p, const tripoint &examp)
         return;
     }
 
-    ///\EFFECT_CARPENTRY decreases loss when firing a kiln
-    const SkillLevel &skill = p.get_skill_level( skill_carpentry );
+    ///\EFFECT_FABRICATION decreases loss when firing a kiln
+    const SkillLevel &skill = p.get_skill_level( skill_fabrication );
     int loss = 60 - 2 * skill; // We can afford to be inefficient - logs and skeletons are cheap, charcoal isn't
 
     // Burn stuff that should get charred, leave out the rest
@@ -1876,8 +1920,6 @@ void iexamine::kiln_empty(player &p, const tripoint &examp)
     result.charges = char_charges;
     g->m.add_item( examp, result );
     add_msg( _("You fire the charcoal kiln.") );
-    int practice_amount = ( 10 - skill ) * total_volume / units::from_liter( 25 ); // 50 at 0 skill, 25 at 5, 10 at 8
-    p.practice( skill_carpentry, practice_amount );
 }
 
 void iexamine::kiln_full(player &, const tripoint &examp)
@@ -2124,7 +2166,7 @@ void iexamine::keg(player &p, const tripoint &examp)
             liquid_present = true;
         }
     }
-    if (!liquid_present) {
+    if( !liquid_present ) {
         // Get list of all drinks
         auto drinks_inv = p.items_with( []( const item &it ) {
             return it.made_of( LIQUID );
@@ -2136,48 +2178,57 @@ void iexamine::keg(player &p, const tripoint &examp)
         // Make lists of unique drinks... about third time we do this, maybe we oughta make a function next time
         std::vector<itype_id> drink_types;
         std::vector<std::string> drink_names;
+        std::vector<double> drink_rot;
         for( auto &drink : drinks_inv ) {
-            if (std::find(drink_types.begin(), drink_types.end(), drink->typeId()) == drink_types.end()) {
-                drink_types.push_back(drink->typeId());
-                drink_names.push_back(drink->tname());
+            auto found_drink = std::find( drink_types.begin(), drink_types.end(), drink->typeId() );
+            if( found_drink == drink_types.end() ) {
+                drink_types.push_back( drink->typeId() );
+                drink_names.push_back( drink->tname()) ;
+                drink_rot.push_back( drink->get_relative_rot() );
+            } else {
+                auto rot_iter = std::next( drink_rot.begin(), std::distance( drink_types.begin(), found_drink ) );
+                // Yep, worst rot wins.
+                *rot_iter = std::max( *rot_iter, drink->get_relative_rot() );
             }
         }
         // Choose drink to store in keg from list
         int drink_index = 0;
-        if (drink_types.size() > 1) {
-            drink_names.push_back(_("Cancel"));
-            drink_index = menu_vec(false, _("Store which drink?"), drink_names) - 1;
-            if (drink_index == (int)drink_names.size() - 1) {
+        if( drink_types.size() > 1 ) {
+            drink_names.push_back( _( "Cancel" ) );
+            drink_index = menu_vec( false, _( "Store which drink?" ), drink_names ) - 1;
+            if( drink_index == (int)drink_names.size() - 1 ) {
                 drink_index = -1;
             }
         } else { //Only one drink type was in inventory, so it's automatically used
-            if (!query_yn(_("Fill the %1$s with %2$s?"), g->m.name(examp).c_str(), drink_names[0].c_str())) {
+            if( !query_yn( _( "Fill the %1$s with %2$s?" ),
+                           g->m.name( examp ).c_str(), drink_names[0].c_str() ) ) {
                 drink_index = -1;
             }
         }
-        if (drink_index < 0) {
+        if( drink_index < 0 ) {
             return;
         }
         //Store liquid chosen in the keg
-        itype_id drink_type = drink_types[drink_index];
-        int charges_held = p.charges_of(drink_type);
-        item drink (drink_type, 0);
+        itype_id drink_type = drink_types[ drink_index ];
+        int charges_held = p.charges_of( drink_type );
+        item drink( drink_type, 0 );
+        drink.set_relative_rot( drink_rot[ drink_index ] );
         drink.charges = 0;
         bool keg_full = false;
-        for (int i = 0; i < charges_held && !keg_full; i++) {
-            g->u.use_charges(drink.typeId(), 1);
+        for( int i = 0; i < charges_held && !keg_full; i++ ) {
+            g->u.use_charges( drink.typeId(), 1 );
             drink.charges++;
             keg_full = drink.volume() >= keg_cap;
         }
         if( keg_full ) {
-            add_msg(_("You completely fill the %1$s with %2$s."),
-                    g->m.name(examp).c_str(), drink.tname().c_str());
+            add_msg( _( "You completely fill the %1$s with %2$s." ),
+                    g->m.name( examp ).c_str(), drink.tname().c_str() );
         } else {
-            add_msg(_("You fill the %1$s with %2$s."), g->m.name(examp).c_str(),
-                    drink.tname().c_str());
+            add_msg( _( "You fill the %1$s with %2$s." ), g->m.name( examp ).c_str(),
+                    drink.tname().c_str() );
         }
         p.moves -= 250;
-        g->m.i_clear(examp);
+        g->m.i_clear( examp );
         g->m.add_item( examp, drink );
         return;
     } else {
@@ -2218,7 +2269,6 @@ void iexamine::keg(player &p, const tripoint &examp)
                 return; // They didn't actually drink
             }
 
-            drink->charges--;
             if (drink->charges == 0) {
                 add_msg(_("You squeeze the last drops of %1$s from the %2$s."), drink->tname().c_str(),
                         g->m.name(examp).c_str());
@@ -2270,10 +2320,8 @@ bool iexamine::pour_into_keg( const tripoint &pos, item &liquid )
 
     map_stack stack = g->m.i_at( pos );
     if( stack.empty() ) {
-        // Not using map functions here because kegs have the NOITEM flags and map functions
-        // will put the liquid on a nearby tile instead.
-        stack.insert_at( stack.begin(), liquid );
-        stack.front().charges = 0; // Will be set later
+        g->m.add_item( pos, liquid );
+        g->m.i_at( pos ).front().charges = 0; // Will be set later
     } else if( stack.front().typeId() != liquid.typeId() ) {
         add_msg( _( "The %s already contains some %s, you can't add a different liquid to it." ),
                  keg_name.c_str(), stack.front().tname().c_str() );
@@ -2773,10 +2821,13 @@ void iexamine::reload_furniture(player &p, const tripoint &examp)
     //~ Loading fuel or other items into a piece of furniture.
     const std::string popupmsg = string_format(_("Put how many of the %1$s into the %2$s?"),
                                  ammo->nname(max_amount).c_str(), f.name.c_str());
-    long amount = std::atoi( string_input_popup( popupmsg, 20,
-                                  to_string(max_amount),
-                                  "", "", -1, true).c_str() );
-    if (amount <= 0 || amount > max_amount) {
+    long amount = string_input_popup()
+                  .title( popupmsg )
+                  .width( 20 )
+                  .text( to_string( max_amount ) )
+                  .only_digits( true )
+                  .query_long();
+    if( amount <= 0 || amount > max_amount ) {
         return;
     }
     p.use_charges( ammo->get_id(), amount );
@@ -2850,7 +2901,10 @@ void iexamine::sign(player &p, const tripoint &examp)
                                             _("You graffiti a message onto the sign.");
         std::string ignore_message = _("You leave the sign alone.");
         if (query_yn(query_message.c_str())) {
-            std::string signage = string_input_popup(_("Spray what?"), 0, "", "", "signage");
+            std::string signage = string_input_popup()
+                                  .title( _( "Spray what?" ) )
+                                  .identifier( "signage" )
+                                  .query_string();
             if (signage.empty()) {
                 p.add_msg_if_player(m_neutral, ignore_message.c_str());
             } else {
@@ -3223,9 +3277,12 @@ void iexamine::pay_gas( player &p, const tripoint &examp )
 
         std::string popupmsg = string_format(
                                    _( "How many liters of gasoline to buy? Max: %d L. (0 to cancel) " ), maximum_liters );
-        long liters = std::atoi( string_input_popup( popupmsg, 20,
-                                 to_string( maximum_liters ), "", "", -1, true ).c_str()
-                               );
+        long liters = string_input_popup()
+                      .title( popupmsg )
+                      .width( 20 )
+                      .text( to_string( maximum_liters ) )
+                      .only_digits( true )
+                      .query_long();
         if( liters <= 0 ) {
             return;
         }

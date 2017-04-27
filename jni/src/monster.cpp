@@ -385,6 +385,33 @@ void monster::get_Attitude(nc_color &color, std::string &text) const
     }
 }
 
+std::pair<std::string, nc_color> hp_description( int cur_hp, int max_hp )
+{
+    std::string damage_info;
+    nc_color col;
+    if( cur_hp >= max_hp ) {
+        damage_info = _("It is uninjured");
+        col = c_green;
+    } else if( cur_hp >= max_hp * 0.8 ) {
+        damage_info = _("It is lightly injured");
+        col = c_ltgreen;
+    } else if( cur_hp >= max_hp * 0.6 ) {
+        damage_info = _("It is moderately injured");
+        col = c_yellow;
+    } else if( cur_hp >= max_hp * 0.3 ) {
+        damage_info = _("It is heavily injured");
+        col = c_yellow;
+    } else if( cur_hp >= max_hp * 0.1 ) {
+        damage_info = _("It is severely injured");
+        col = c_ltred;
+    } else {
+        damage_info = _("it is nearly dead");
+        col = c_red;
+    }
+
+    return std::make_pair( damage_info, col );
+}
+
 int monster::print_info(WINDOW* w, int vStart, int vLines, int column) const
 {
     const int vEnd = vStart + vLines;
@@ -407,28 +434,9 @@ int monster::print_info(WINDOW* w, int vStart, int vLines, int column) const
     } else if (has_effect( effect_shrieking)) {
         wprintz(w, h_white, _("Shrieking"));
     }
-    std::string damage_info;
-    nc_color col;
-    if (hp >= type->hp) {
-        damage_info = _("It is uninjured");
-        col = c_green;
-    } else if (hp >= type->hp * .8) {
-        damage_info = _("It is lightly injured");
-        col = c_ltgreen;
-    } else if (hp >= type->hp * .6) {
-        damage_info = _("It is moderately injured");
-        col = c_yellow;
-    } else if (hp >= type->hp * .3) {
-        damage_info = _("It is heavily injured");
-        col = c_yellow;
-    } else if (hp >= type->hp * .1) {
-        damage_info = _("It is severely injured");
-        col = c_ltred;
-    } else {
-        damage_info = _("it is nearly dead");
-        col = c_red;
-    }
-    mvwprintz(w, vStart++, column, col, "%s", damage_info.c_str());
+
+    const auto hp_desc = hp_description( hp, type->hp );
+    mvwprintz( w, vStart++, column, hp_desc.second, "%s", hp_desc.first.c_str() );
 
     std::vector<std::string> lines = foldstring(type->description, getmaxx(w) - 1 - column);
     int numlines = lines.size();
@@ -437,6 +445,16 @@ int monster::print_info(WINDOW* w, int vStart, int vLines, int column) const
     }
 
     return vStart;
+}
+
+std::string monster::extended_description() const
+{
+    // @todo Add tons of info here
+    std::string ret = string_format( _ ( "This is a %s" ), name().c_str() );
+    ret += "\n--\n";
+    auto hp_bar = hp_description( hp, type->hp );
+    ret += get_tag_from_color( hp_bar.second ) + hp_bar.first;
+    return replace_colors( ret );
 }
 
 const std::string &monster::symbol() const
@@ -598,7 +616,7 @@ Creature *monster::attack_target()
 
 bool monster::is_fleeing(player &u) const
 {
-    if( has_effect( effect_run) ) {
+    if( effect_cache[FLEEING] ) {
         return true;
     }
     monster_attitude att = attitude(&u);
@@ -663,7 +681,7 @@ monster_attitude monster::attitude( const Character *u ) const
             return MATT_FRIEND;
         }
     }
-    if( has_effect( effect_run ) ) {
+    if( effect_cache[FLEEING] ) {
         return MATT_FLEE;
     }
     if( has_effect( effect_pacified ) ) {
@@ -1204,8 +1222,15 @@ void monster::die_in_explosion(Creature* source)
     die( source );
 }
 
-bool monster::move_effects(bool attacking)
+bool monster::move_effects(bool)
 {
+    // This function is relatively expensive, we want that cached
+    // IMPORTANT: If adding any new effects here, make SURE to
+    // add them to hardcoded_movement_impairing in effect.cpp
+    if( !effect_cache[MOVEMENT_IMPAIRED] ) {
+        return true;
+    }
+
     bool u_see_me = g->u.sees(*this);
     if (has_effect( effect_tied)) {
         return false;
@@ -1294,7 +1319,7 @@ bool monster::move_effects(bool attacking)
             remove_effect( effect_grabbed);
         }
     }
-    return Creature::move_effects(attacking);
+    return true;
 }
 
 void monster::add_eff_effects(effect e, bool reduced)
@@ -1412,30 +1437,11 @@ float monster::stability_roll() const
 
 float monster::get_dodge() const
 {
-    float ret = 0.0f;
-    switch( type->size ) {
-        case MS_TINY:
-            ret += 6;
-            break;
-        case MS_SMALL:
-            ret += 3;
-            break;
-        case MS_LARGE:
-            ret -= 2;
-            break;
-        case MS_HUGE:
-            ret -= 4;
-            break;
-        case MS_MEDIUM:
-            break; // keep default
-    }
-
     if( has_effect( effect_downed ) ) {
-        // Just the size mod
-        return ret;
+        return 0.0f;
     }
 
-    ret += Creature::get_dodge();
+    float ret = Creature::get_dodge();
     if( has_effect( effect_lightsnare ) || has_effect( effect_heavysnare ) || has_effect( effect_beartrap ) || has_effect( effect_tied ) ) {
         ret /= 2;
     }
@@ -1502,6 +1508,18 @@ int monster::impact( const int force, const tripoint &p )
     return total_dealt;
 }
 
+void monster::reset_bonuses()
+{
+    effect_cache.reset();
+
+    Creature::reset_bonuses();
+}
+
+void monster::reset_stats()
+{
+    // Nothing here yet
+}
+
 void monster::reset_special(const std::string &special_name)
 {
     set_special( special_name, type->special_attacks.at(special_name)->cooldown );
@@ -1549,8 +1567,10 @@ void monster::explode()
 
 void monster::process_turn()
 {
-    for( const auto &e: type->emit_fields ) {
-        g->m.emit_field( pos(), e );
+    if( !is_hallucination() ) {
+        for( const auto &e: type->emit_fields ) {
+            g->m.emit_field( pos(), e );
+        }
     }
 
     Creature::process_turn();
@@ -1563,6 +1583,7 @@ void monster::die(Creature* nkiller)
         // *only* set to true in this function!
         return;
     }
+    g->set_critter_died();
     dead = true;
     set_killer( nkiller );
     if (!no_extra_death_drops) {
@@ -1708,7 +1729,9 @@ void monster::process_effects()
 
             const efftype_id &id = _effect_it.second.get_id();
             // MATERIALS-TODO: use fire resistance
-            if( id == effect_onfire ) {
+            if( it.impairs_movement() ) {
+                effect_cache[MOVEMENT_IMPAIRED] = true;
+            } else if( id == effect_onfire ) {
                 int dam = 0;
                 if( made_of( material_id( "veggy" ) ) ) {
                     dam = rng( 10, 20 );
@@ -1722,6 +1745,8 @@ void monster::process_effects()
                 } else {
                     it.set_duration( 0 );
                 }
+            } else if( id == effect_run ) {
+                effect_cache[FLEEING] = true;
             }
         }
     }
@@ -1739,6 +1764,14 @@ void monster::process_effects()
 
     if( has_flag( MF_REGENERATES_10 ) && heal( 10 ) > 0 && one_in( 2 ) && g->u.sees( *this ) ) {
         add_msg( m_warning, _( "The %s seems a little healthier." ), name().c_str() );
+    }
+
+    if( has_flag( MF_REGENERATES_IN_DARK ) ) {
+        const float light = g->m.ambient_light_at( pos() );
+        // Magic number 10000 was chosen so that a floodlight prevents regeneration in a range of 20 tiles
+        if ( heal ( int( 50.0 *  exp( - light*light / 10000 ) )  > 0 && one_in( 2 ) && g->u.sees( *this ) ) ) {
+            add_msg( m_warning, _( "The %s uses the darkness to regenerate." ), name().c_str() );
+        }
     }
 
     //Monster will regen morale and aggression if it is on max HP
@@ -2043,6 +2076,11 @@ void monster::on_hit( Creature *source, body_part,
 body_part monster::get_random_body_part( bool ) const
 {
     return bp_torso;
+}
+
+std::vector<body_part> monster::get_all_body_parts( bool ) const
+{
+    return std::vector<body_part>( 1, bp_torso );
 }
 
 int monster::get_hp_max( hp_part ) const

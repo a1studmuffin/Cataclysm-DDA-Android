@@ -78,8 +78,9 @@ void main_menu::print_menu( WINDOW *w_open, int iSel, const int iMenuOffsetX, in
 #ifdef __ANDROID__
                   _( "Please send bug reports and feedback to Michael Davies: m@michaeldavies.com.au" ) );
 #else
-                  _( "Please report bugs on github.com/CleverRaven/Cataclysm-DDA/ or the forums." ) );
+                  _( "Please report bugs to kevin.granade@gmail.com or post on the forums." ) );
 #endif
+
     int iLine = 0;
     const int iOffsetX = ( window_width - FULL_SCREEN_WIDTH ) / 2;
 
@@ -325,7 +326,7 @@ bool main_menu::opening_screen()
     }
     dir = opendir( FILENAMES["templatedir"].c_str() );
     while( ( dp = readdir( dir ) ) ) {
-        std::string tmp = dp->d_name;
+        std::string tmp = native_to_utf8( dp->d_name );
         if( tmp.find( ".template" ) != std::string::npos ) {
             templates.push_back( tmp.substr( 0, tmp.find( ".template" ) ) );
         }
@@ -691,7 +692,7 @@ bool main_menu::new_character_tab()
             } else if( !templates.empty() && action == "DELETE_TEMPLATE" ) {
                 if( query_yn( _( "Are you sure you want to delete %s?" ),
                               templates[sel3].c_str() ) ) {
-                    const auto path = FILENAMES["templatedir"] + templates[sel3] + ".template";
+                    const auto path = FILENAMES["templatedir"] + utf8_to_native( templates[sel3] ) + ".template";
                     if( std::remove( path.c_str() ) != 0 ) {
                         popup( _( "Sorry, something went wrong." ) );
                     } else {

@@ -67,6 +67,7 @@ overmap &overmapbuffer::get( const int x, const int y )
     // Note: fix_mongroups might load other overmaps, so overmaps.back() is not
     // necessarily the overmap at (x,y)
     fix_mongroups( result );
+    fix_npcs( result );
 
     last_requested_overmap = &result;
     return result;
@@ -101,6 +102,41 @@ void overmapbuffer::fix_mongroups(overmap &new_overmap)
         mg.pos.y = smabs.y;
         om.add_mon_group( mg );
         new_overmap.zg.erase( it++ );
+    }
+}
+
+void overmapbuffer::fix_npcs( overmap &new_overmap )
+{
+    for( auto it = new_overmap.npcs.begin(); it != new_overmap.npcs.end(); ) {
+        npc &np = **it;
+        const tripoint npc_omt_pos = np.global_omt_location();
+        const point npc_om_pos = omt_to_om_copy( npc_omt_pos.x, npc_omt_pos.y );
+        const point &loc = new_overmap.pos();
+        if( npc_om_pos == loc ) {
+            // Nothing to do
+            ++it;
+            continue;
+        }
+
+        if( !has( npc_om_pos.x, npc_om_pos.y ) ) {
+            // This can't really happen without save editing
+            // We have no sane option here, just place the NPC on the edge
+            debugmsg( "NPC %s is out of bounds, on ungenerated overmap %d,%d",
+                      np.name.c_str(), loc.x, loc.y );
+            hide_npc( np.getID() );
+            point npc_sm = om_to_sm_copy( npc_om_pos );
+            point min = om_to_sm_copy( loc );
+            point max = om_to_sm_copy( loc + point( 1, 1 ) ) - point( 1, 1 );
+            npc_sm.x = clamp( npc_sm.x, min.x, max.x );
+            npc_sm.y = clamp( npc_sm.y, min.y, max.y );
+            np.spawn_at_sm( npc_sm.x, npc_sm.y, np.posz() );
+            ++it;
+            continue;
+        }
+
+        // Simplest case: just move the pointer
+        get( npc_om_pos.x, npc_om_pos.y ).add_npc( np );
+        it = new_overmap.npcs.erase( it );
     }
 }
 
@@ -463,7 +499,7 @@ bool overmapbuffer::reveal( const tripoint &center, int radius )
     return result;
 }
 
-bool overmapbuffer::reveal_route( const tripoint &source, const tripoint &dest, int radius )
+bool overmapbuffer::reveal_route( const tripoint &source, const tripoint &dest, int radius, bool road_only )
 {
     static const int RADIUS = 4;            // Maximal radius of search (in overmaps)
     static const int OX = RADIUS * OMAPX;   // half-width of the area to search in
@@ -473,7 +509,7 @@ bool overmapbuffer::reveal_route( const tripoint &source, const tripoint &dest, 
     const tripoint base( source - start );      // To convert local coordinates to global ones
     const tripoint finish( dest - base );       // Local destination - relative to source
 
-    const auto estimate = [ this, &base, &finish ]( const pf::node &, const pf::node &cur ) {
+    const auto estimate = [ this, &base, &finish, road_only ]( const pf::node &, const pf::node &cur ) {
         int res = 0;
         int omx = base.x + cur.x;
         int omy = base.y + cur.y;
@@ -481,6 +517,10 @@ bool overmapbuffer::reveal_route( const tripoint &source, const tripoint &dest, 
         const auto &oter = get_om_global( omx, omy ).get_ter( omx, omy, base.z );
 
         if( !is_ot_type( "road", oter ) && !is_ot_type ( "bridge", oter ) && !is_ot_type( "hiway", oter ) ) {
+            if( road_only ) {
+                return -1;
+            }
+
             if( is_river( oter ) ) {
                 return -1; // Can't walk on water
             }

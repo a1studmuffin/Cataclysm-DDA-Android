@@ -624,9 +624,7 @@ void mission_start::recruit_tracker( mission *miss )
     temp->normalize();
     temp->randomize( NC_COWBOY );
     // NPCs spawn with submap coordinates, site is in overmap terrain coords
-    temp->spawn_at( site.x * 2, site.y * 2, site.z );
-    temp->setx( 11 );
-    temp->sety( 11 );
+    temp->spawn_at_precise( { site.x * 2, site.y * 2 }, tripoint( 11, 11, site.z ) );
     temp->attitude = NPCATT_TALK;
     temp->mission = NPC_MISSION_SHOPKEEP;
     temp->personality.aggression -= 1;
@@ -1744,7 +1742,7 @@ void mission_start::reveal_refugee_center( mission *miss )
     const tripoint source_road = overmap_buffer.find_closest( your_pos, "road", 3, false );
     const tripoint dest_road = overmap_buffer.find_closest( center_pos, "road", 3, false );
 
-    if( overmap_buffer.reveal_route( source_road, dest_road ) ) {
+    if( overmap_buffer.reveal_route( source_road, dest_road, 1, true ) ) {
         add_msg( _( "You mark the refugee center and the road that leads to it..." ) );
     } else {
         add_msg( _( "You mark the refugee center, but you have no idea how to get there by road..." ) );

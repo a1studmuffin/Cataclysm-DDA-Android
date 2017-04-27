@@ -1,3 +1,4 @@
+#pragma once
 #ifndef OVERMAP_H
 #define OVERMAP_H
 
@@ -176,6 +177,7 @@ class overmap
     point const& pos() const { return loc; }
 
     void save() const;
+    void clear();
 
     /**
      * @return The (local) overmap terrain coordinates of a randomly
@@ -241,7 +243,7 @@ class overmap
      * Interactive point choosing; used as the map screen.
      * The map is initially center at the players position.
      * @returns The absolute coordinates of the chosen point or
-     * @ref invalid_point if canceled with escape (or similar key).
+     * invalid_point if canceled with escape (or similar key).
      */
     static tripoint draw_overmap();
     /**
@@ -296,6 +298,8 @@ public:
   std::vector<city> cities;
   std::vector<city> roads_out;
 
+    std::vector<const overmap_special *> unplaced_mandatory_specials;
+
  private:
     friend class overmapbuffer;
 
@@ -313,6 +317,24 @@ public:
      */
     std::unordered_multimap<tripoint, monster> monster_map;
     regional_settings settings;
+
+    // "Valid" map is one that has all mandatory specials
+    // "Limited" map is one where all specials are placed only in allowed places
+    enum class overmap_valid : int {
+        // Invalid map, with no limits
+        invalid = 0,
+        // Valid map, but some parts are without limits
+        unlimited,
+        // Perfectly valid map
+        valid
+    };
+
+    // Overmaps less valid than this will trigger the query
+    overmap_valid minimum_validity;
+    // The validity of this overmap, changed by actually generating it
+    overmap_valid current_validity;
+
+    void set_validity_from_settings();
 
   // Initialise
   void init_layers();
@@ -332,6 +354,8 @@ public:
   void unserialize_view_legacy(std::istream &fin);
  private:
   void generate(const overmap* north, const overmap* east, const overmap* south, const overmap* west);
+  // Controls error handling in generation
+  void generate_outer(const overmap* north, const overmap* east, const overmap* south, const overmap* west);
   bool generate_sub(int const z);
 
     const city &get_nearest_city( const tripoint &p ) const;
@@ -360,12 +384,16 @@ public:
     static tripoint draw_overmap(const tripoint& center, const draw_data_t &data);
   /**
    * Draws the overmap terrain.
-   * @param w The window to draw in.
+   * @param w The window to draw map in.
+   * @param wbar Window containing status bar
    * @param center The global overmap terrain coordinate of the center
    * of the view. The z-component is used to determine the z-level.
    * @param orig The global overmap terrain coordinates of the player.
    * It will be marked specially.
-   * @param debug_monstergroups Displays monster groups on the overmap.
+   * @param blink Whether blinking is enabled
+   * @param showExplored Whether display of explored territory is enabled
+   * @param inp_ctxt Input context in this screen
+   * @param data Various other drawing flags, largely regarding debug information
    */
   static void draw(WINDOW *w, WINDOW *wbar, const tripoint &center,
             const tripoint &orig, bool blink, bool showExplored,
@@ -411,10 +439,27 @@ public:
   void place_special( const overmap_special &special, const tripoint &p, om_direction::type dir, const city &cit );
   // Monsters, radios, etc.
   void place_specials();
+  /**
+   * One pass of placing specials - by default there are 3 (mandatory, mandatory without city distance, optional)
+   * @param to_place vector of pairs [special, count] to place in this pass. Placed specials are removed/deducted from this.
+   * @param sectors sectors in which placement is possible. Taken sectors will be removed from this vector.
+   * @param check_city_distance If false, the city distance limits of specials are not respected.
+   */
+  void place_specials_pass( std::vector<std::pair<const overmap_special *, int>> &to_place,
+                            std::vector<point> &sectors, bool check_city_distance );
+  /**
+   * As @ref place_specials_pass, but for only one sector at a time.
+   */
+  bool place_special_attempt( std::vector<std::pair<const overmap_special *, int>> &candidates,
+                              const point &sector, bool check_city_distance );
   void place_mongroups();
   void place_radios();
 
     void add_mon_group(const mongroup &group);
+
+    void load_monster_groups( JsonIn &jo );
+    void load_legacy_monstergroups( JsonIn &jo );
+    void save_monster_groups( JsonOut &jo ) const;
 };
 
 // TODO: readd the stream operators

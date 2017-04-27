@@ -1,3 +1,4 @@
+#pragma once
 #ifndef CREATURE_H
 #define CREATURE_H
 
@@ -82,8 +83,8 @@ class Creature
         virtual void process_turn();
         /** Resets the value of all bonus fields to 0. */
         virtual void reset_bonuses();
-        /** Does NOTHING, exists to simplify cleanup and should be removed */
-        virtual void reset_stats();
+        /** Resets stats, and applies effects in an idempotent manner */
+        virtual void reset_stats() = 0;
         /** Handles stat and bonus reset. */
         virtual void reset();
         /** Adds an appropriate blood splatter. */
@@ -162,7 +163,7 @@ class Creature
          * chooses a target. This is for creatures that are friendly towards
          * the player and therefor choose a target that is hostile
          * to the player.
-         * @param pos Position of the fake-player
+         *
          * @param range The maximal range to look for monsters, anything
          * outside of that range is ignored.
          * @param boo_hoo The number of targets that have been skipped
@@ -198,8 +199,19 @@ class Creature
         dealt_projectile_attack projectile_attack( const projectile &proj, const tripoint &target,
                                                    double total_dispersion );
 
-        /** Makes an aiming/attack roll for a single projectile attack shot */
-        projectile_attack_aim projectile_attack_roll( double dispersion, double range ) const;
+        /**
+         * Makes an aiming/attack roll for a single projectile attack shot
+         * @param dispersion Effective dispersion of the shot (higher = less accurate weapon/ammo/sights)
+         * @param range Range to the target
+         * @param target_size Ease of hitting target. 1.0 means target occupies entire tile and doesn't dodge.
+         */
+        projectile_attack_aim projectile_attack_roll( double dispersion, double range, double target_size ) const;
+
+        /**
+         * Size of the target this creature presents to ranged weapons.
+         * 0.0 means unhittable, 1.0 means all projectiles going through this creature's tile will hit it.
+         */
+        double ranged_target_size() const;
 
         /**
          * Probability that a projectile attack will hit with at least the given accuracy.
@@ -207,9 +219,11 @@ class Creature
          * @param total_dispersion nominal shot dispersion of gun + shooter
          * @param range range of the attack
          * @param accuracy the required accuracy, in the range [0..1]
+         * @param target_size Ease of hitting target. 1.0 means target occupies entire tile and doesn't dodge.
          * @return the probability, in the range (0..1]
          */
-        double projectile_attack_chance( double total_dispersion, double range, double accuracy ) const;
+        double projectile_attack_chance( double total_dispersion, double range,
+                                         double accuracy, double target_size ) const;
 
         // handles blocking of damage instance. mutates &dam
         virtual bool block_hit(Creature *source, body_part &bp_hit,
@@ -237,12 +251,15 @@ class Creature
 
         /**
          * Deals the damage via an attack. Allows armor mitigation etc.
+         *
          * Most sources of external damage should use deal_damage
          * Mutates the damage_instance& object passed in to reflect the
          * post-mitigation object.
          * Does nothing if this creature is already dead.
-         * Does not call @ref check_dead_state (see there).
-         * @ref source The attacking creature, can be null.
+         * Does not call @ref check_dead_state.
+         * @param source The attacking creature, can be null.
+         * @param bp The attacked body part
+         * @param d The damage dealt
          */
         virtual dealt_damage_instance deal_damage(Creature *source, body_part bp,
                 const damage_instance &d);
@@ -317,7 +334,7 @@ class Creature
         virtual void setpos( const tripoint &pos ) = 0;
 
         /** Processes move stopping effects. Returns false if movement is stopped. */
-        virtual bool move_effects(bool attacking);
+        virtual bool move_effects(bool attacking) = 0;
 
         /** Handles effect application effects. */
         virtual void add_eff_effects(effect e, bool reduced);
@@ -420,6 +437,11 @@ class Creature
         };
 
         virtual body_part get_random_body_part( bool main = false ) const = 0;
+        /**
+         * Returns body parts in order in which they should be displayed.
+         * @param main If true, only displays parts that can have hit points
+         */
+        virtual std::vector<body_part> get_all_body_parts( bool main = false ) const = 0;
 
         virtual int get_speed_base() const;
         virtual int get_speed_bonus() const;
@@ -512,6 +534,8 @@ class Creature
         virtual void add_msg_player_or_say( game_message_type, const char *, const char *, ... ) const PRINTF_LIKE( 4, 5 ) {};
 
         virtual void add_memorial_log(const char *, const char *, ...) PRINTF_LIKE( 3, 4 ) {};
+
+        virtual std::string extended_description() const = 0;
 
         virtual nc_color symbol_color() const = 0;
         virtual nc_color basic_symbol_color() const = 0;

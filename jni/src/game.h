@@ -1,3 +1,4 @@
+#pragma once
 #ifndef GAME_H
 #define GAME_H
 
@@ -8,6 +9,7 @@
 #include "int_id.h"
 #include "item_location.h"
 #include "cursesdef.h"
+#include "ranged.h"
 
 #include <vector>
 #include <map>
@@ -65,14 +67,6 @@ enum safe_mode_type {
     SAFE_MODE_OFF = 0, // Moving always allowed
     SAFE_MODE_ON = 1, // Moving allowed, but if a new monsters spawns, go to SAFE_MODE_STOP
     SAFE_MODE_STOP = 2, // New monsters spotted, no movement allowed
-};
-
-enum target_mode {
-    TARGET_MODE_FIRE,
-    TARGET_MODE_THROW,
-    TARGET_MODE_TURRET,
-    TARGET_MODE_TURRET_MANUAL,
-    TARGET_MODE_REACH
 };
 
 enum body_part : int;
@@ -133,6 +127,7 @@ class game
         friend class editmap;
         friend class advanced_inventory;
         friend class main_menu;
+        friend class target_handler;
     public:
         game();
         ~game();
@@ -228,15 +223,23 @@ class game
         scent_map &scent;
 
         std::unique_ptr<Creature_tracker> critter_tracker;
+
         /**
-         * Add an entry to @ref events. For further information see event.h
+         * Add an entry to @ref game::events. For further information see event.h
+         * @param type Type of event.
+         * @param on_turn On which turn event should be happened.
+         * @param faction_id Faction of event.
+         * reality bubble. In global submap coordinates.
+         */
+        void add_event(event_type type, int on_turn, int faction_id = -1);
+        /**
+         * Add an entry to @ref game::events. For further information see event.h
          * @param type Type of event.
          * @param on_turn On which turn event should be happened.
          * @param faction_id Faction of event.
          * @param where The location of the event, optional, defaults to the center of the
          * reality bubble. In global submap coordinates.
          */
-        void add_event(event_type type, int on_turn, int faction_id = -1);
         void add_event(event_type type, int on_turn, int faction_id, tripoint where);
         bool event_queued(event_type type) const;
         /** Create explosion at p of intensity (power) with (shrapnel) chunks of shrapnel.
@@ -336,22 +339,24 @@ class game
         /**
          * Returns true if the player is allowed to fire a given item, or false if otherwise.
          * reload_time is stored as a side effect of condition testing.
-         * @param weapon The item that needs to be checked, which we are trying to fire.
-         * @param reload_time Modifies the time spent by certain guns reloading to fire.
+         * @param args Contains item data and targeting mode for the gun we want to fire.
          * @return True if all conditions are true, otherwise false.
          */
-        bool plfire_check( item &weapon, int &reload_time );
+        bool plfire_check( const targeting_data &args );
 
         /**
          * Handles interactive parts of gun firing (target selection, etc.).
-         * If weapon != nullptr, parameters are used and stored for future reference. 
-         * Otherwise, it tries using the stored parameters (player's weapon by default).
-         * @param weapon Pointer to the weapon we began aiming with.
-         * @param bp_cost The amount by which the player's power reserve is decreased after firing.
-         * @param held Whether the weapon to be fired requires the player to wield it.
          * @return Whether an attack was actually performed.
          */
-        bool plfire( item *weapon = nullptr, int bp_cost = 0, bool held = true );
+        bool plfire();
+        /**
+         * Handles interactive parts of gun firing (target selection, etc.).
+         * This version stores targeting parameters for weapon, used for calls to the nullary form.
+         * @param weapon Reference to a weapon we want to start aiming.
+         * @param bp_cost The amount by which the player's power reserve is decreased after firing.
+         * @return Whether an attack was actually performed.
+         */
+        bool plfire( item &weapon, int bp_cost = 0 );
 
         /** Target is an interactive function which allows the player to choose a nearby
          *  square.  It display information on any monster/NPC on that square, and also
@@ -360,24 +365,6 @@ class game
         std::vector<tripoint> target( tripoint src, tripoint dst, int range,
                                       std::vector<Creature *> t, int target,
                                       item *relevant, target_mode mode );
-
-        /**
-         * Targetting UI callback is passed the item being targeted (if any)
-         * and should return pointer to effective ammo data (if any)
-         */
-        using target_callback = std::function<const itype *(item *obj)>;
-
-        /**
-         *  Prompts for target and returns trajectory to it
-         *  @param relevant active item (if any)
-         *  @param ammo effective ammo data (derived from @param relevant if unspecified)
-         *  @param on_mode_change callback when user attempts changing firing mode
-         *  @param on_ammo_change callback when user attempts changing ammo
-         */
-        std::vector<tripoint> pl_target_ui( target_mode mode, item *relevant, int range,
-                                            const itype *ammo = nullptr,
-                                            const target_callback &on_mode_change = target_callback(),
-                                            const target_callback &on_ammo_change = target_callback() );
 
         /** Redirects to player::cancel_activity(). */
         void cancel_activity();
@@ -423,7 +410,6 @@ class game
 
         /** Nuke the area at p - global overmap terrain coordinates! */
         void nuke( const tripoint &p );
-        bool spread_fungus( const tripoint &p );
         std::vector<faction *> factions_at( const tripoint &p );
         float natural_light_level( int zlev ) const;
         /** Returns coarse number-of-squares of visibility at the current light level.
@@ -465,6 +451,9 @@ class game
                                   int last_line, bool draw_terrain_indicators,
                                   const visibility_variables &cache );
 
+        /** Long description of (visible) things at tile. */
+        void extended_description( const tripoint &p );
+
         void draw_trail_to_square( const tripoint &t, bool bDrawX );
 
         // @todo Move these functions to game_menus::inv and isolate them.
@@ -481,7 +470,7 @@ class game
         };
         int inventory_item_menu(int pos, int startx = 0, int width = 50, inventory_item_menu_positon position = RIGHT_OF_INFO);
 
-        /** Custom-filtered menu for inventory items and those that are nearby (within @ref radius). */
+        /** Custom-filtered menu for inventory and nearby items and those that within specified radius */
         item_location inv_map_splice( item_filter filter, const std::string &title, int radius = 0,
                                       const std::string &none_message = "" );
         faction *list_factions(std::string title = "FACTIONS:");
@@ -598,6 +587,7 @@ class game
          * @param on_ground Iterator to the item on the ground. Must be valid and point to an
          * item in the stack at `m.i_at(pos)`
          * @param pos The position of the item on the map.
+         * @param radius around position to handle liquid for
          * @return Whether the item has been removed (which implies it was handled completely).
          * The iterator is invalidated in that case. Otherwise the item remains but may have
          * fewer charges.
@@ -608,6 +598,8 @@ class game
          * Handle liquid from inside a container item. The function also handles consuming move points.
          * @param in_container Iterator to the liquid. Must be valid and point to an
          * item in the @ref item::contents of the container.
+         * @param container Container of the liquid
+         * @param radius around position to handle liquid for
          * @return Whether the item has been removed (which implies it was handled completely).
          * The iterator is invalidated in that case. Otherwise the item remains but may have
          * fewer charges.
@@ -625,7 +617,9 @@ class game
          * Supply one of the source parameters to prevent the player from pouring the liquid back
          * into that "container". If no source parameter is given, the liquid must not be in a
          * container at all (e.g. freshly crafted, or already removed from the container).
+         * @param liquid The actual liquid
          * @param source The container that currently contains the liquid.
+         * @param radius Radius to look for liquid around pos
          * @param source_pos The source of the liquid when it's from the map.
          * @param source_veh The vehicle that currently contains the liquid in its tank.
          * @return Whether the user has handled the liquid (at least part of it). `false` indicates
@@ -790,7 +784,6 @@ class game
         void wait(); // Long wait (player action)  '^'
         void open(); // Open a door  'o'
         void close();
-        void close( const tripoint &p ); // Close a door  'c'
         void smash(); // Smash terrain
 
         void handbrake ();
@@ -826,6 +819,8 @@ public:
 
         /** If invoked, NPCs will be reloaded before next turn. */
         void set_npcs_dirty();
+        /** If invoked, dead will be cleaned this turn. */
+        void set_critter_died();
 private:
         void wield(int pos = INT_MIN); // Wield a weapon  'w'
         void read(); // Read a book  'R' (or 'a')
@@ -967,6 +962,8 @@ private:
         vehicle *remoteveh_cache;
         /** Has a NPC been spawned since last load? */
         bool npcs_dirty;
+        /** Has anything died in this turn and needs to be cleaned up? */
+        bool critter_died;
 
         std::unique_ptr<special_game> gamemode;
 

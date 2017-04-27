@@ -252,6 +252,19 @@ item &inventory::add_item(item newit, bool keep_invlet, bool assign_invlet)
     if( !keep_invlet && g->u.assigned_invlet.count(newit.invlet) ) {
         newit.invlet = '\0';
     }
+    
+    // Remove letters if not in the favourites cache
+    if( !keep_invlet && assign_invlet && newit.invlet ) {
+        auto invlet_list_iter = invlet_cache.find( newit.typeId() );
+        bool found = false;
+        if( invlet_list_iter != invlet_cache.end() ) {
+            auto &invlet_list = invlet_list_iter->second;
+            found = std::find( invlet_list.begin(), invlet_list.end(), newit.invlet ) != invlet_list.end();
+        }
+        if( !found ) {
+            newit.invlet = '\0';
+        }
+    }
 
     // Check how many stacks of this type already are in our inventory.
     if(!keep_invlet && assign_invlet) {
@@ -400,8 +413,9 @@ void inventory::form_from_map( const tripoint &origin, int range, bool assign_in
             const itype *type = f.crafting_pseudo_item_type();
             if (type != NULL) {
                 const itype *ammo = f.crafting_ammo_item_type();
-                item furn_item( type, calendar::turn, ammo ? count_charges_in_list( ammo, g->m.i_at( p ) ) : 0 );
+                item furn_item( type, calendar::turn, 0);
                 furn_item.item_tags.insert("PSEUDO");
+                furn_item.charges = ammo ? count_charges_in_list(ammo, g->m.i_at(p)) : 0;
                 add_item(furn_item);
             }
         }
@@ -1016,6 +1030,33 @@ void inventory::assign_empty_invlet(item &it, bool force)
         }
     }
     debugmsg("could not find a hotkey for %s", it.tname().c_str());
+}
+
+void inventory::reassign_item(item &it, char invlet)
+{
+    if( it.invlet == invlet ) { // no change needed
+        return;
+    }
+    std::vector<char> *invlet_list = nullptr;
+    if( invlet ) {  // assigning a new invlet, so we always need to create the list
+        invlet_list = &invlet_cache[it.typeId()];
+    } else {  // unsetting the old invlet, so we want to avoid creating the list
+        auto invlet_list_iter = invlet_cache.find( it.typeId() );
+        if( invlet_list_iter != invlet_cache.end() ) {
+            invlet_list = &invlet_list_iter->second;
+        }
+    }
+    if( invlet_list && it.invlet ) {  // remove the old invlet from the cache
+        invlet_list->erase( std::remove_if( invlet_list->begin(), invlet_list->end(), [&it]( char cached_invlet ) {
+            return cached_invlet == it.invlet;
+        } ), invlet_list->end() );
+    }
+    if( invlet_list && invlet ) {   // add the new invlet to the cache
+        if( std::find( invlet_list->begin(), invlet_list->end(), invlet ) == invlet_list->end() ) {
+            invlet_list->push_back( invlet );
+        }
+    }
+    it.invlet = invlet;
 }
 
 std::set<char> inventory::allocated_invlets() const

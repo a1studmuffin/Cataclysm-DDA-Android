@@ -1,3 +1,4 @@
+#pragma once
 #ifndef MAP_H
 #define MAP_H
 
@@ -234,7 +235,8 @@ class map
     /** Determine the visible light level for a tile, based on light_at
      * for the tile, vision distance, etc
      *
-     * @param x, y The tile on this map to draw.
+     * @param p The tile on this map to draw.
+     * @param cache Currently cached visibility parameters
      */
     lit_level apparent_light_at( const tripoint &p, const visibility_variables &cache ) const;
     visibility_type get_visibility( const lit_level ll,
@@ -250,6 +252,7 @@ class map
      * `g->m` and maps with equivalent coordinates can be used, as other maps
      * would have coordinate systems incompatible with `g->u.posx()`
      *
+     * @param w Window we are drawing in
      * @param center The coordinate of the center of the viewport, this can
      *               be different from the player coordinate.
      */
@@ -257,8 +260,11 @@ class map
 
     /** Draw the map tile at the given coordinate. Called by `map::draw()`.
     *
+    * @param w The window we are drawing in
+    * @param u The player
     * @param p The tile on this map to draw.
-    * @param view_center_x, view_center_y The center of the viewport to be rendered,
+    * @param invert Invert colors if this flag is true
+    * @param show_items Draw items in tile if this flag is true
     *        see `center` in `map::draw()`
     */
     void drawsq( WINDOW* w, player &u, const tripoint &p,
@@ -371,6 +377,13 @@ public:
      */
     bool valid_move( const tripoint &from, const tripoint &to,
                      const bool bash = false, const bool flying = false ) const;
+                     
+    /**
+     * Size of map objects at `p` for purposes of ranged combat.
+     * Size is in percentage of tile: if 1.0, all attacks going through tile
+     * should hit map objects on it, if 0.0 there is nothing to be hit (air/water).
+     */
+    double ranged_target_size( const tripoint &p ) const;
 
 
 // 3D Sees:
@@ -382,6 +395,9 @@ public:
     /**
      * Don't expose the slope adjust outside map functions.
      *
+     * @param F Thing doing the seeing
+     * @param T Thing being seen
+     * @param range Vision range of F
      * @param bresenham_slope Indicates the start offset of Bresenham line used to connect
      * the two points, and may subsequently be used to form a path between them.
      * Set to zero if the function returns false.
@@ -467,6 +483,7 @@ public:
     /**
     * Checks if tile is occupied by vehicle and by which part.
     *
+    * @param p Tile to check for vehicle
     * @param part_num The part number of the part at this tile will be returned in this parameter.
     * @return A pointer to the vehicle in this tile.
     */
@@ -672,12 +689,18 @@ public:
  /** Check if the last terrain is wall in direction NORTH, SOUTH, WEST or EAST
   *  @param no_furn if true, the function will stop and return false
   *  if it encounters a furniture
+  *  @param x starting x coordinate of check
+  *  @param y starting y coordinate of check
+  *  @param xmax ending x coordinate of check
+  *  @param ymax ending y coordinate of check
+  *  @param dir Direction of check
   *  @return true if from x to xmax or y to ymax depending on direction
   *  all terrain is floor and the last terrain is a wall */
  bool is_last_ter_wall(const bool no_furn, const int x, const int y,
                        const int xmax, const int ymax, const direction dir) const;
     /**
      * Checks if there are any flammable items on the tile.
+     * @param p tile to check
      * @param threshold Fuel threshold (lower means worse fuels are accepted).
      */
     bool flammable_items_at( const tripoint &p, int threshold = 0 );
@@ -724,6 +747,8 @@ void add_corpse( const tripoint &p );
     /**
      * Returns a pair where first is whether anything was smashed and second is if it was destroyed.
      *
+     * @param p Where to bash
+     * @param str How hard to bash
      * @param silent Don't produce any sound
      * @param destroy Destroys some otherwise unbashable tiles
      * @param bash_floor Allow bashing the floor and the tile that supports it
@@ -736,10 +761,6 @@ void add_corpse( const tripoint &p );
 // Effects of attacks/items
     bool hit_with_acid( const tripoint &p );
     bool hit_with_fire( const tripoint &p );
-    bool marlossify( const tripoint &p );
-    /** Makes spores at p. source is used for kill counting */
-    void create_spores( const tripoint &p, Creature* source = nullptr );
-    void fungalize( const tripoint &p, Creature *source = nullptr, double spore_chance = 0.0 );
 
     bool has_adjacent_furniture( const tripoint &p );
      /** Remove moppable fields/items at this location
@@ -791,7 +812,7 @@ void add_corpse( const tripoint &p );
                     const unsigned quantity=1, const long charges=0,
                     const unsigned birthday=0, const int damlevel=0);
 
-    item &add_item_or_charges( const int x, const int y, const item &obj, bool overflow = true );
+    item &add_item_or_charges( const int x, const int y, item obj, bool overflow = true );
 
     void add_item(const int x, const int y, item new_item);
     void spawn_an_item( const int x, const int y, item new_item,
@@ -822,11 +843,13 @@ void add_corpse( const tripoint &p );
 
     /**
      *  Adds an item to map tile or stacks charges
+     *  @param pos Where to add item
+     *  @param obj Item to add
      *  @param overflow if destination is full attempt to drop on adjacent tiles
      *  @return reference to dropped (and possibly stacked) item or null item on failure
      *  @warning function is relatively expensive and meant for user initiated actions, not mapgen
      */
-    item &add_item_or_charges( const tripoint &pos, const item &obj, bool overflow = true );
+    item &add_item_or_charges( const tripoint &pos, item obj, bool overflow = true );
 
     /** Helper for map::add_item */
     item &add_item_at( const tripoint &p, std::list<item>::iterator index, item new_item );
@@ -835,11 +858,17 @@ void add_corpse( const tripoint &p );
      * WARNING: does -not- check volume or stack charges. player functions (drop etc) should use
      * map::add_item_or_charges
      *
-     * @ret The item that got added, or nulitem.
+     * @returns The item that got added, or nulitem.
      */
     item &add_item( const tripoint &p, item new_item );
     item &spawn_an_item( const tripoint &p, item new_item,
                         const long charges, const int damlevel);
+
+    /**
+     * Update an item's active status, for example when adding
+     * hot or perishable liquid to a container.
+     */
+    void make_active( item_location &loc );
 
     /**
      * @name Consume items on the map
@@ -867,10 +896,13 @@ void add_corpse( const tripoint &p );
     * Place items from item group in the rectangle f - t. Several items may be spawned
     * on different places. Several items may spawn at once (at one place) when the item group says
     * so (uses @ref item_group::items_from which may return several items at once).
+    * @param loc Current location of items to be placed
     * @param chance Chance for more items. A chance of 100 creates 1 item all the time, otherwise
     * it's the chance that more items will be created (place items until the random roll with that
     * chance fails). The chance is used for the first item as well, so it may not spawn an item at
     * all. Values <= 0 or > 100 are invalid.
+    * @param f One corner of rectangle in which to spawn items
+    * @param t Second corner of rectangle in which to spawn items
     * @param ongrass If false the items won't spawn on flat terrain (grass, floor, ...).
     * @param turn The birthday that the created items shall have.
     * @param magazine percentage chance item will contain the default magazine
@@ -883,6 +915,8 @@ void add_corpse( const tripoint &p );
     /**
     * Place items from an item group at p. Places as much items as the item group says.
     * (Most item groups are distributions and will only create one item.)
+    * @param loc Current location of items
+    * @param p Destination of items
     * @param turn The birthday that the created items shall have.
     * @return Vector of pointers to placed items (can be empty, but no nulls).
     */
@@ -923,6 +957,7 @@ void add_corpse( const tripoint &p );
          * If there is no trap at the creatures location, nothing is done.
          * If the creature can avoid the trap, nothing is done as well.
          * Otherwise the trap is triggered.
+         * @param critter Creature that just got trapped
          * @param may_avoid If true, the creature tries to avoid the trap
          * (@ref Creature::avoid_trap). If false, the trap is always triggered.
          */
@@ -961,17 +996,23 @@ void add_corpse( const tripoint &p );
         int adjust_field_strength( const tripoint &p, const field_id t, const int offset );
         /**
          * Set age of field entry at point.
-         * @return resulting age or -1 if not present (does *not* create a new field).
+         * @param p Location of field
+         * @param t ID of field
+         * @param age New age of specified field
          * @param isoffset If true, the given age value is added to the existing value,
          * if false, the existing age is ignored and overridden.
+         * @return resulting age or -1 if not present (does *not* create a new field).
          */
         int set_field_age( const tripoint &p, const field_id t, const int age, bool isoffset = false );
         /**
          * Set density of field entry at point, creating if not present,
          * removing if density becomes 0.
-         * @return resulting density, or 0 for not present (either removed or not created at all).
+         * @param p Location of field
+         * @param t ID of field
+         * @param str New strength of field
          * @param isoffset If true, the given str value is added to the existing value,
          * if false, the existing density is ignored and overridden.
+         * @return resulting density, or 0 for not present (either removed or not created at all).
          */
         int set_field_strength( const tripoint &p, const field_id t, const int str, bool isoffset = false );
         /**
@@ -997,8 +1038,13 @@ void add_corpse( const tripoint &p );
         void propagate_field( const tripoint &center, field_id fid,
                               int amount, int max_density = MAX_FIELD_DENSITY );
 
-        /** Runs one cycle of emission @ref src which **may** result in propagation of fields */
-        void emit_field( const tripoint &pos, const emit_id &src );
+        /**
+         * Runs one cycle of emission @ref src which **may** result in propagation of fields
+         * @param pos Location of emission
+         * @param src Id of object producing the emission
+         * @param mul Multiplies the chance and possibly qty (if `chance*mul > 100`) of the emission
+         */
+        void emit_field( const tripoint &pos, const emit_id &src, float mul = 1.0f );
 
 // End of 3D field function block
 
@@ -1057,6 +1103,7 @@ public:
     void drop_furniture( const tripoint &p );
     void drop_items( const tripoint &p );
     void drop_vehicle( const tripoint &p );
+    void drop_fields( const tripoint &p );
     /*@}*/
 
     /**
@@ -1107,6 +1154,7 @@ public:
          * Whether the player character (g->u) can see the given square (local map coordinates).
          * This only checks the transparency of the path to the target, the light level is not
          * checked.
+         * @param t Target point to look at
          * @param max_range All squares that are further away than this are invisible.
          * Ignored if smaller than 0.
          */
@@ -1192,6 +1240,7 @@ protected:
         void add_roofs( int gridx, int gridy, int gridz );
         /**
          * Whether the item has to be removed as it has rotten away completely.
+         * @param itm Item to check for rotting
          * @param pnt The *absolute* position of the item in the world (not just on this map!),
          * used for rot calculation.
          * @return true if the item has rotten away and should be removed, false otherwise.
@@ -1200,7 +1249,8 @@ protected:
         /**
          * Go through the list of items, update their rotten status and remove items
          * that have rotten away completely.
-         * @param pnt The point on this map where the items are, used for rot calculation.
+         * @param items items to remove
+         * @param p The point on this map where the items are, used for rot calculation.
          */
         template <typename Container>
         void remove_rotten_items( Container &items, const tripoint &p );
@@ -1216,12 +1266,14 @@ protected:
         void grow_plant( const tripoint &p );
         /**
          * Try to grow fruits on static plants (not planted by the player)
+         * @param p Place to restock
          * @param time_since_last_actualize Time (in turns) since this function has been
          * called the last time.
          */
         void restock_fruits( const tripoint &p, int time_since_last_actualize );
         /**
          * Produce sap on tapped maple trees
+         * @param p Location of tapped tree
          * @param time_since_last_actualize Time (in turns) since this function has been
          * called the last time.
          */
@@ -1407,11 +1459,13 @@ private:
         ITER_FINISH         // End iteration
     };
     /**
-    * Runs a `(tripoint &gp, submap* sm, point &lp) -> void` functor
+    * Runs a functor over given submaps
     * over submaps in the area, getting next submap only when the current one "runs out" rather than every time.
-    * @param gp Grid (like `get_submap_at_grid`) coordinate of the submap,
-    * @param lp Local (submap) coordinate of currently accessed point.
+    * gp in the functor is Grid (like `get_submap_at_grid`) coordinate of the submap,
     * Will silently clip the area to map bounds.
+    * @param start Starting point for function
+    * @param end End point for function
+    * @param fun Function to run
     */
     /*@{*/
     template<typename Functor>
@@ -1428,7 +1482,7 @@ private:
     std::vector<submap*> grid;
     /**
      * This vector contains an entry for each trap type, it has therefor the same size
-     * as the @ref traplist vector. Each entry contains a list of all point on the map that
+     * as the traplist vector. Each entry contains a list of all point on the map that
      * contain a trap of that type. The first entry however is always empty as it denotes the
      * tr_null trap.
      */

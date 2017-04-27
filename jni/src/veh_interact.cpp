@@ -20,6 +20,8 @@
 #include "vehicle_selector.h"
 #include "fault.h"
 #include "npc.h"
+#include "string_input_popup.h"
+#include "veh_utils.h"
 
 #include <cmath>
 #include <list>
@@ -370,8 +372,8 @@ void veh_interact::cache_tool_availability()
                            map_selector( g->u.pos(), PICKUP_RANGE ).max_quality( JACK ),
                            vehicle_selector(g->u.pos(), 2, true, *veh ).max_quality( JACK ) } );
 
-    // cap JACK requirements at 8000kg to support arbritrarily large vehicles
-    double qual = ceil( double( std::min( veh->total_mass(), 8000 ) * 1000 ) / TOOL_LIFT_FACTOR );
+    // cap JACK requirements at 8500kg to support arbritrarily large vehicles
+    double qual = ceil( double( std::min( veh->total_mass(), 8500 ) * 1000 ) / TOOL_LIFT_FACTOR );
 
     has_jack = g->u.has_quality( JACK, qual ) ||
                map_selector( g->u.pos(), PICKUP_RANGE ).has_quality( JACK, qual ) ||
@@ -757,7 +759,12 @@ bool veh_interact::do_install( std::string &msg )
 
         const std::string action = main_context.handle_input();
         if ( action == "FILTER" ){
-            filter = string_input_popup( _( "Search for part" ), 50, filter, "", _( "Filter" ), 100, false );
+            string_input_popup()
+            .title( _( "Search for part" ) )
+            .width( 50 )
+            .description( _( "Filter" ) )
+            .max_length( 100 )
+            .edit( filter );
             tab = 7; // Move to the user filter tab.
             display_grid();
             display_stats();
@@ -1249,23 +1256,8 @@ vehicle_part *veh_interact::get_most_damaged_part() const
 
 vehicle_part *veh_interact::get_most_repariable_part() const
 {
-    auto part_damage_comparison = []( const vehicle_part &a, const vehicle_part &b )
-    {
-        return !b.removed &&
-               b.info().is_repairable() &&
-               b.base.damage() > a.base.damage();
-    };
-
-    auto high_damage_iterator = std::max_element( veh->parts.begin(),
-                                veh->parts.end(),
-                                part_damage_comparison );
-    if( high_damage_iterator == veh->parts.end() ||
-        high_damage_iterator->removed ||
-        !high_damage_iterator->info().is_repairable() ) {
-        return nullptr;
-    }
-
-    return &( *high_damage_iterator );
+    auto &part = veh_utils::most_repairable_part( *veh, g->u );
+    return part ? &part : nullptr;
 }
 
 bool veh_interact::can_remove_part( int idx ) {
@@ -1486,17 +1478,20 @@ bool veh_interact::do_assign_crew( std::string &msg )
 
 bool veh_interact::do_rename( std::string & )
 {
-    std::string name = string_input_popup(_("Enter new vehicle name:"), 20);
-    if(name.length() > 0) {
-        (veh->name = name);
-        if (veh->tracking_on) {
+    std::string name = string_input_popup()
+                       .title( _( "Enter new vehicle name:" ) )
+                       .width( 20 )
+                       .query_string();
+    if( name.length() > 0 ) {
+        veh->name = name;
+        if( veh->tracking_on ) {
             overmap_buffer.remove_vehicle( veh );
             // Add the vehicle again, this time with the new name
             overmap_buffer.add_vehicle( veh );
         }
     }
     // refresh w_disp & w_part windows:
-    move_cursor(0, 0);
+    move_cursor( 0, 0 );
 
     return false;
 }
@@ -1508,10 +1503,14 @@ bool veh_interact::do_relabel( std::string &msg )
         return false;
     }
 
-    std::string text = string_input_popup(_("New label:"), 20, veh->get_label(-ddx, -ddy));
+    std::string text = string_input_popup()
+                       .title( _( "New label:" ) )
+                       .width( 20 )
+                       .text( veh->get_label( -ddx, -ddy ) )
+                       .query_string();
     veh->set_label(-ddx, -ddy, text); // empty input removes the label
     // refresh w_disp & w_part windows:
-    move_cursor(0, 0);
+    move_cursor( 0, 0 );
 
     return false;
 }
@@ -1891,7 +1890,6 @@ void veh_interact::display_name()
 
 /**
  * Prints the list of usable commands, and highlights the hotkeys used to activate them.
- * @param mode What command we are currently using. ' ' for no command.
  */
 void veh_interact::display_mode()
 {
@@ -1956,6 +1954,7 @@ size_t veh_interact::display_esc(WINDOW *win)
  * when installing new parts or changing tires.
  * @param pos The current cursor position in the list.
  * @param list The list to display parts from.
+ * @param header Number of lines occupied by the list header
  */
 void veh_interact::display_list(size_t pos, std::vector<const vpart_info*> list, const int header)
 {
@@ -2242,26 +2241,6 @@ void act_vehicle_siphon(vehicle* veh) {
     g->u.siphon( *veh, fuel );
 }
 
-static int calc_xp_gain( const vpart_info &vp, const skill_id &sk ) {
-    auto iter = vp.install_skills.find( sk );
-    if( iter == vp.install_skills.end() ) {
-        return 0;
-    }
-
-    // how many levels are we above the requirement?
-    int lvl = std::max( g->u.get_skill_level( sk ) - iter->second, 1 );
-
-    // scale xp gain per hour according to relative level
-    // 0-1: 60 xp /h
-    //   2: 15 xp /h
-    //   3:  6 xp /h
-    //   4:  4 xp /h
-    //   5:  3 xp /h
-    //   6:  2 xp /h
-    //  7+:  1 xp /h
-    return std::ceil( double( vp.install_moves ) / MOVES( MINUTES( pow( lvl, 2 ) ) ) );
-}
-
 /**
  * Called when the activity timer for installing parts, repairing, etc times
  * out and the action is complete.
@@ -2343,17 +2322,22 @@ void veh_interact::complete_vehicle()
             g->u.view_offset.x = px;
             g->u.view_offset.y = py;
 
-            int delta_x = headlight_target.x - (veh->global_x() + q.x);
-            int delta_y = headlight_target.y - (veh->global_y() + q.y);
+            int dir = 0;
+            if(headlight_target.x == INT_MIN) {
+                dir = 0;
+            } else {
+                int delta_x = headlight_target.x - (veh->global_x() + q.x);
+                int delta_y = headlight_target.y - (veh->global_y() + q.y);
 
-            const double PI = 3.14159265358979f;
-            int dir = int(atan2(static_cast<float>(delta_y), static_cast<float>(delta_x)) * 180.0 / PI);
-            dir -= veh->face.dir();
-            while(dir < 0) {
-                dir += 360;
-            }
-            while(dir > 360) {
-                dir -= 360;
+                const double PI = 3.14159265358979f;
+                dir = int(atan2(static_cast<float>(delta_y), static_cast<float>(delta_x)) * 180.0 / PI);
+                dir -= veh->face.dir();
+                while(dir < 0) {
+                    dir += 360;
+                }
+                while(dir > 360) {
+                    dir -= 360;
+                }
             }
 
             veh->parts[partnum].direction = dir;
@@ -2362,55 +2346,14 @@ void veh_interact::complete_vehicle()
         add_msg( m_good, _("You install a %1$s into the %2$s." ), veh->parts[ partnum ].name().c_str(), veh->name.c_str() );
 
         for( const auto &sk : vpinfo.install_skills ) {
-            g->u.practice( sk.first, calc_xp_gain( vpinfo, sk.first ) );
+            g->u.practice( sk.first, veh_utils::calc_xp_gain( vpinfo, sk.first ) );
         }
 
         break;
     }
 
     case 'r': {
-        auto &pt = veh->parts[ vehicle_part ];
-        auto &vp = pt.info();
-
-        const auto reqs = pt.is_broken() ? vp.install_requirements() : vp.repair_requirements() * pt.base.damage();
-
-        if( !reqs.can_make_with_inventory( g->u.crafting_inventory() ) ) {
-           add_msg( m_info, _( "You don't meet the requirements to repair the %s." ), pt.name().c_str() );
-           break;
-        }
-
-        // consume items extracting any base item (which we will need if replacing broken part)
-        item base( vp.item );
-        for( const auto& e : reqs.get_components() ) {
-            for( auto& obj : g->u.consume_items( e ) ) {
-                if( obj.typeId() == vpinfo.item ) {
-                    base = obj;
-                }
-            }
-        }
-
-        for( const auto& e : reqs.get_tools() ) {
-            g->u.consume_tools( e );
-        }
-
-        g->u.invalidate_crafting_inventory();
-
-        for( const auto &sk : pt.is_broken() ? vp.install_skills : vp.repair_skills ) {
-            g->u.practice( sk.first, calc_xp_gain( vp, sk.first ) );
-        }
-
-        if( pt.is_broken() ) {
-            const int dir = pt.direction;
-            veh->break_part_into_pieces( vehicle_part, g->u.posx(), g->u.posy() );
-            veh->remove_part( vehicle_part );
-            veh->part_removal_cleanup();
-            const int partnum = veh->install_part( dx, dy, part_id, std::move( base ) );
-            veh->parts[partnum].direction = dir;
-        } else {
-            veh->set_hp( pt, pt.info().durability );
-        }
-
-        add_msg( m_good, _( "You repair the %1$s's %2$s." ), veh->name.c_str(), pt.name().c_str() );
+        veh_utils::repair_part( *veh, veh->parts[ vehicle_part ], g->u );
         break;
     }
 
@@ -2495,7 +2438,7 @@ void veh_interact::complete_vehicle()
             g->m.add_item_or_charges( g->u.pos(), veh->parts[vehicle_part].properties_to_item() );
             for( const auto &sk : vpinfo.install_skills ) {
                 // removal is half as educational as installation
-                g->u.practice( sk.first, calc_xp_gain( vpinfo, sk.first ) / 2 );
+                g->u.practice( sk.first, veh_utils::calc_xp_gain( vpinfo, sk.first ) / 2 );
             }
 
         } else {

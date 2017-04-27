@@ -1,3 +1,4 @@
+#pragma once
 #ifndef IUSE_ACTOR_H
 #define IUSE_ACTOR_H
 
@@ -27,6 +28,8 @@ using ammotype = string_id<ammunition_type>;
 using itype_id = std::string;
 class material_type;
 using material_id = string_id<material_type>;
+class emit;
+using emit_id = string_id<emit>;
 
 /**
  * Transform an item into a specific type.
@@ -211,7 +214,7 @@ class consume_drug_iuse : public iuse_actor
         /** A list of stats and adjustments to them. **/
         std::map<std::string, int> stat_adjustments;
 
-        /** Modify player @vitamin_levels by random amount between min (first) and max (second) */
+        /** Modify player vitamin_levels by random amount between min (first) and max (second) */
         std::map<vitamin_id, std::pair<int,int>> vitamins;
 
         /** How many move points this action takes. */
@@ -630,8 +633,8 @@ class holster_actor : public iuse_actor
         int max_weight = -1;
         /** Total number of items that holster can contain **/
         int multi = 1;
-        /** Base move cost per unit volume when wielding the contained item */
-        int draw_cost = VOLUME_MOVE_COST;
+        /** Base cost of accessing/storing an item. Scales down to half of that with skills. */
+        int draw_cost = INVENTORY_HANDLING_PENALTY;
         /** Guns using any of these skills can be holstered */
         std::vector<skill_id> skills;
         /** Items with any of these flags set can be holstered */
@@ -664,8 +667,8 @@ class bandolier_actor : public iuse_actor
         /** What types of ammo can be stored? */
         std::set<ammotype> ammo;
 
-        /** Base move cost per unit volume when storing/retrieving contained items */
-        int draw_cost = VOLUME_MOVE_COST;
+        /** Base cost of accessing/storing an item. Scales down to half of that with skills. */
+        int draw_cost = INVENTORY_HANDLING_PENALTY;
 
         /** Check if obj could be stored in the bandolier */
         bool can_store( const item& bandolier, const item& obj ) const;
@@ -865,6 +868,21 @@ class place_trap_actor : public iuse_actor
         void load( JsonObject &jo ) override;
         long use( player*, item*, bool, const tripoint & ) const override;
         iuse_actor *clone() const override;
+};
+
+class emit_actor : public iuse_actor
+{
+    public:
+        std::set<emit_id> emits;
+        /** If true multiplies the emits by number of charges on the item. */
+        bool scale_qty = false;
+
+        emit_actor( const std::string &type = "emit_actor" ) : iuse_actor( type ) {}
+        ~emit_actor() override { }
+        void load( JsonObject &jo ) override;
+        long use( player*, item*, bool, const tripoint & ) const override;
+        iuse_actor *clone() const override;
+        void finalize( const itype_id &my_item_type ) override;
 };
 
 #endif
