@@ -6,6 +6,7 @@
 #include "output.h"
 #include "rng.h"
 #include "game.h"
+#include "fungal_effects.h"
 #include "line.h"
 #include "options.h"
 #include "item_factory.h"
@@ -43,18 +44,15 @@
 #include <cstring>
 #include <algorithm>
 
-const mtype_id mon_spore( "mon_spore" );
 const mtype_id mon_zombie( "mon_zombie" );
 
 const skill_id skill_driving( "driving" );
 const skill_id skill_traps( "traps" );
 
-const species_id FUNGUS( "FUNGUS" );
 const species_id ZOMBIE( "ZOMBIE" );
 
 const efftype_id effect_boomered( "boomered" );
 const efftype_id effect_crushed( "crushed" );
-const efftype_id effect_spores( "spores" );
 const efftype_id effect_stunned( "stunned" );
 
 extern bool is_valid_in_w_terrain(int,int);
@@ -669,6 +667,14 @@ float map::vehicle_buoyancy( const vehicle &veh ) const
     return total_wheel_area;
 }
 
+static bool sees_veh( const Creature &c, vehicle &veh, bool force_recalc )
+{
+    const auto &veh_points = veh.get_points( force_recalc );
+    return std::any_of( veh_points.begin(), veh_points.end(), [&c]( const tripoint &pt ) {
+        return c.sees( pt );
+    } );
+}
+
 void map::move_vehicle( vehicle &veh, const tripoint &dp, const tileray &facing )
 {
     const bool vertical = dp.z != 0;
@@ -807,6 +813,8 @@ void map::move_vehicle( vehicle &veh, const tripoint &dp, const tileray &facing 
         }
     }
 
+    const bool seen = sees_veh( g->u, veh, false );
+
     if( can_move ) {
         // Accept new direction
         if( veh.skidding ) {
@@ -836,8 +844,11 @@ void map::move_vehicle( vehicle &veh, const tripoint &dp, const tileray &facing 
         }
     }
     // Redraw scene
-    // TODO: Make this not happen on unseen vehicles
-    g->draw();
+    // But only if the vehicle was seen before or after the move
+    if( seen || sees_veh( g->u, veh, true ) ) {
+        g->draw();
+        refresh_display();
+    }
 }
 
 int map::shake_vehicle( vehicle &veh, const int velocity_before, const int direction )
@@ -1552,6 +1563,13 @@ void map::furn_set( const tripoint &p, const furn_id new_furniture )
     const furn_t &old_t = old_id.obj();
     const furn_t &new_t = new_furniture.obj();
 
+    // If player has grabbed this furniture and it's no longer grabbable, release the grab.
+    if( g->u.grab_type == OBJECT_FURNITURE && g->u.grab_point == p && new_t.move_str_req < 0 ) {
+        add_msg( _( "The %s you were grabbing is destroyed!" ), old_t.name.c_str() );
+        g->u.grab_type = OBJECT_NONE;
+        g->u.grab_point = tripoint_zero;
+    }
+
     if( old_t.transparent != new_t.transparent ) {
         set_transparency_cache_dirty( p.z );
     }
@@ -1969,13 +1987,15 @@ int map::combined_movecost( const tripoint &from, const tripoint &to,
 bool map::valid_move( const tripoint &from, const tripoint &to,
                       const bool bash, const bool flying ) const
 {
-    if( abs( from.x - to.x ) > 1 || abs( from.y - to.y ) > 1 || abs( from.z - to.z ) > 1 ||
-        !inbounds( from ) || !inbounds( to ) ) {
+    // Note: no need to check inbounds here, because maptile_at will do that
+    // If oob tile is supplied, the maptile_at will be an unpassable "null" tile
+    if( abs( from.x - to.x ) > 1 || abs( from.y - to.y ) > 1 || abs( from.z - to.z ) > 1 ) {
         return false;
     }
 
     if( from.z == to.z ) {
-        return bash || passable( to );
+        // But here we need to, to prevent bashing critters
+        return passable( to ) || ( bash && inbounds( to ) );
     } else if( !zlevels ) {
         return false;
     }
@@ -1984,20 +2004,26 @@ bool map::valid_move( const tripoint &from, const tripoint &to,
 
     const tripoint &up_p = going_up ? to : from;
     const tripoint &down_p = going_up ? from : to;
-    const maptile up = maptile_at( up_p );
-    const maptile down = maptile_at( down_p );
 
+    const maptile up = maptile_at( up_p );
     const ter_t &up_ter = up.get_ter_t();
+
+    if( up_ter.movecost == 0 ) {
+        // Unpassable tile
+        return false;
+    }
+
+    const maptile down = maptile_at( down_p );
     const ter_t &down_ter = down.get_ter_t();
 
-    if( up_ter.movecost == 0 || down_ter.movecost == 0 ) {
+    if( down_ter.movecost == 0 ) {
         // Unpassable tile
         return false;
     }
 
     if( !up_ter.has_flag( TFLAG_NO_FLOOR ) && !up_ter.has_flag( TFLAG_GOES_DOWN ) ) {
         // Can't move from up to down
-        if( from.x != to.x || from.y != to.y ) {
+        if( abs( from.x - to.x ) == 1 || abs( from.y - to.y ) == 1 ) {
             // Break the move into two - vertical then horizontal
             tripoint midpoint( down_p.x, down_p.y, up_p.z );
             return valid_move( down_p, midpoint, bash, flying ) &&
@@ -2035,6 +2061,20 @@ bool map::valid_move( const tripoint &from, const tripoint &to,
 }
 
 // End of move cost
+
+double map::ranged_target_size( const tripoint &p ) const
+{
+    if( impassable( p ) ) {
+        return 1.0;
+    }
+
+    if( !has_floor( p ) ) {
+        return 0.0;
+    }
+
+    // @todo Handle cases like shrubs, trees, furniture, sandbags...
+    return 0.1;
+}
 
 int map::climb_difficulty( const tripoint &p ) const
 {
@@ -2128,6 +2168,7 @@ void map::drop_everything( const tripoint &p )
     drop_furniture( p );
     drop_items( p );
     drop_vehicle( p );
+    drop_fields( p );
 }
 
 void map::drop_furniture( const tripoint &p )
@@ -2304,6 +2345,38 @@ void map::drop_vehicle( const tripoint &p )
     }
 
     veh->falling = true;
+}
+
+void map::drop_fields( const tripoint &p )
+{
+    field &fld = field_at( p );
+    if( fld.fieldCount() == 0 ) {
+        return;
+    }
+
+    // Ugly two-pass for now - field access is weird
+    bool dropped = false;
+    const tripoint below = p - tripoint( 0, 0, 1 );
+    for( const auto &iter : fld ) {
+        const field_entry &entry = iter.second;
+        // For now only drop cosmetic fields, which don't warrant per-turn check
+        // Active fields "drop themselves"
+        if( entry.decays_on_actualize() ) {
+            add_field( below, entry.getFieldType(), entry.getFieldDensity(), entry.getFieldAge() );
+            dropped = true;
+        }
+    }
+
+    // Now remove the dropped fields (that's the ugly part)
+    while( dropped ) {
+        dropped = false;
+        for( auto iter = fld.begin(); !dropped && iter != fld.end(); ) {
+            if( iter->second.decays_on_actualize() ) {
+                dropped = fld.removeField( iter->second.getFieldType() );
+                break;
+            }
+        }
+    }
 }
 
 void map::support_dirty( const tripoint &p )
@@ -3016,70 +3089,6 @@ bool map::mop_spills( const tripoint &p )
     return retval;
 }
 
-
-void map::fungalize( const tripoint &sporep, Creature *origin, double spore_chance )
-{
-    int mondex = g->mon_at( sporep );
-    if( mondex != -1 ) { // Spores hit a monster
-        if( g->u.sees(sporep) &&
-            !g->zombie(mondex).type->in_species( FUNGUS )) {
-            add_msg(_("The %s is covered in tiny spores!"),
-                    g->zombie(mondex).name().c_str());
-        }
-        monster &critter = g->zombie( mondex );
-        if( !critter.make_fungus() ) {
-            // Don't insta-kill non-fungables. Jabberwocks, for example
-            critter.add_effect( effect_stunned, rng( 1, 3 ) );
-            critter.apply_damage( origin, bp_torso, rng( 25, 50 ) );
-        }
-    } else if( g->u.pos() == sporep ) {
-        player &pl = g->u; // TODO: Make this accept NPCs when they understand fungals
-        ///\EFFECT_DEX increases chance of knocking fungal spores away with your TAIL_CATTLE
-
-        ///\EFFECT_MELEE increases chance of knocking fungal sports away with your TAIL_CATTLE
-        if( pl.has_trait("TAIL_CATTLE") &&
-            one_in( 20 - pl.dex_cur - pl.get_skill_level( skill_id( "melee" ) ) ) ) {
-            pl.add_msg_if_player( _("The spores land on you, but you quickly swat them off with your tail!" ) );
-            return;
-        }
-        // Spores hit the player--is there any hope?
-        bool hit = false;
-        hit |= one_in(4) && pl.add_env_effect( effect_spores, bp_head, 3, 90, bp_head );
-        hit |= one_in(2) && pl.add_env_effect( effect_spores, bp_torso, 3, 90, bp_torso );
-        hit |= one_in(4) && pl.add_env_effect( effect_spores, bp_arm_l, 3, 90, bp_arm_l );
-        hit |= one_in(4) && pl.add_env_effect( effect_spores, bp_arm_r, 3, 90, bp_arm_r );
-        hit |= one_in(4) && pl.add_env_effect( effect_spores, bp_leg_l, 3, 90, bp_leg_l );
-        hit |= one_in(4) && pl.add_env_effect( effect_spores, bp_leg_r, 3, 90, bp_leg_r );
-        if( hit ) {
-            add_msg(m_warning, _("You're covered in tiny spores!"));
-        }
-    } else if( g->num_zombies() < 250 && x_in_y( spore_chance, 1.0 ) ) { // Spawn a spore
-        if( g->summon_mon( mon_spore, sporep ) ) {
-            monster *spore = g->monster_at(sporep);
-            monster *origin_mon = dynamic_cast<monster*>( origin );
-            if( origin_mon != nullptr ) {
-                spore->make_ally( origin_mon );
-            } else if( origin != nullptr && origin->is_player() && g->u.has_trait("THRESH_MYCUS") ) {
-                spore->friendly = 1000;
-            }
-        }
-    } else {
-        g->spread_fungus( sporep );
-    }
-}
-
-void map::create_spores( const tripoint &p, Creature* source )
-{
-    tripoint tmp = p;
-    int &i = tmp.x;
-    int &j = tmp.y;
-    for( i = p.x - 1; i <= p.x + 1; i++ ) {
-        for( j = p.y - 1; j <= p.y + 1; j++ ) {
-            fungalize( tmp, source, 0.25 );
-        }
-    }
-}
-
 int map::collapse_check( const tripoint &p )
 {
     const bool collapses = has_flag( "COLLAPSES", p );
@@ -3377,7 +3386,7 @@ void map::bash_ter_furn( const tripoint &p, bash_params &params )
 
     if( ( smash_furn && has_flag_furn("FUNGUS", p) ) ||
         ( smash_ter && has_flag_ter("FUNGUS", p) ) ) {
-        create_spores( p );
+        fungal_effects( *g, *this ).create_spores( p );
     }
 
     if( params.destroy ) {
@@ -3691,12 +3700,12 @@ void map::crush( const tripoint &p )
 void map::shoot( const tripoint &p, projectile &proj, const bool hit_items )
 {
     // TODO: Make bashing count fully, but other types much less
-    const int initial_damage = proj.impact.total_damage();
+    const float initial_damage = proj.impact.total_damage();
     if( initial_damage < 0 ) {
         return;
     }
 
-    int dam = initial_damage;
+    float dam = initial_damage;
     const auto &ammo_effects = proj.proj_effects;
 
     if( has_flag("ALARMED", p) && !g->event_queued(EVENT_WANTED) ) {
@@ -3808,7 +3817,7 @@ void map::shoot( const tripoint &p, projectile &proj, const bool hit_items )
                 ter_set(p, t_floor);
             }
         }
-    } else if( terrain == t_reinforced_glass ) {
+    } else if( terrain == t_reinforced_glass || terrain == t_reinforced_door_glass_c ) {
         // reinforced glass stops most bullets
         // laser beams are attenuated
         if (ammo_effects.count("LASER")) {
@@ -3817,7 +3826,11 @@ void map::shoot( const tripoint &p, projectile &proj, const bool hit_items )
             //Greatly weakens power of bullets
             dam -= 40;
             if( dam <= 0 && g->u.sees( p ) ) {
-                add_msg(_("The shot is stopped by the reinforced glass wall!"));
+                if( terrain == t_reinforced_glass ) {
+                    add_msg( _( "The shot is stopped by the reinforced glass wall!" ) );
+                } else {
+                    add_msg( _( "The shot is stopped by the reinforced glass door!" ) );
+                }
             } else if (dam >= 40) {
                 //high powered bullets penetrate the glass, but only extremely strong
                 // ones (80 before reduction) actually destroy the glass itself.
@@ -3866,7 +3879,7 @@ void map::shoot( const tripoint &p, projectile &proj, const bool hit_items )
         bash( p, dam, false );
         dam = 0; // TODO: Preserve some residual damage when it makes sense.
     } else {
-        dam -= (rng(0, 1) * rng(0, 1) * rng(0, 1));
+        dam -= proj.momentum_loss;
     }
 
     if (ammo_effects.count("TRAIL") && !one_in(4)) {
@@ -3897,10 +3910,7 @@ void map::shoot( const tripoint &p, projectile &proj, const bool hit_items )
         add_field(p, fd_laser, 2, 0 );
     }
 
-    // Set damage to 0 if it's less
-    if( dam < 0 ) {
-        dam = 0;
-    }
+    dam = std::max( 0.0f, dam );
 
     // Check fields?
     const field_entry *fieldhit = get_field( p, fd_web );
@@ -3977,22 +3987,6 @@ bool map::hit_with_fire( const tripoint &p )
         add_field(p, fd_fire, 3, 0);
     }
     return true;
-}
-
-bool map::marlossify( const tripoint &p )
-{
-    auto &terrain = ter( p ).obj();
-    if (one_in(25) && (terrain.movecost != 0 && !has_furn(p))
-            && !terrain.has_flag(TFLAG_DEEP_WATER)) {
-        ter_set(p, t_marloss);
-        return true;
-    }
-    for (int i = 0; i < 25; i++) {
-        if(!g->spread_fungus( p )) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool map::open_door( const tripoint &p, const bool inside, const bool check_only )
@@ -4089,28 +4083,26 @@ void map::translate_radius(const ter_id from, const ter_id to, float radi, const
 
 bool map::close_door( const tripoint &p, const bool inside, const bool check_only )
 {
+    if( has_flag( "OPENCLOSE_INSIDE", p ) && !inside ) {
+        return false;
+    }
+
     const auto &ter = this->ter( p ).obj();
- const auto &furn = this->furn( p ).obj();
- if( ter.close ) {
-     if ( has_flag("OPENCLOSE_INSIDE", p) && inside == false ) {
-         return false;
-     }
-     if (!check_only) {
-        sounds::sound( p, 10, "", true, "close_door", ter.id.str() );
-        ter_set(p, ter.close );
-     }
-     return true;
- } else if( furn.close ) {
-     if ( has_flag("OPENCLOSE_INSIDE", p) && inside == false ) {
-         return false;
-     }
-     if (!check_only) {
-         sounds::sound( p, 10, "", true, "close_door", furn.id.str() );
-         furn_set(p, furn.close );
-     }
-     return true;
- }
- return false;
+    const auto &furn = this->furn( p ).obj();
+    if( ter.close && !furn.id ) {
+        if( !check_only ) {
+            sounds::sound( p, 10, "", true, "close_door", ter.id.str() );
+            ter_set( p, ter.close );
+        }
+        return true;
+    } else if( furn.close ) {
+        if( !check_only ) {
+            sounds::sound( p, 10, "", true, "close_door", furn.id.str() );
+            furn_set( p, furn.close );
+        }
+        return true;
+    }
+    return false;
 }
 
 const std::string map::get_signage( const tripoint &p ) const
@@ -4270,7 +4262,7 @@ void map::spawn_item(const int x, const int y, const std::string &type_id,
                 quantity, charges, birthday, damlevel );
 }
 
-item &map::add_item_or_charges(const int x, const int y, const item &obj, bool overflow )
+item &map::add_item_or_charges(const int x, const int y, item obj, bool overflow )
 {
     return add_item_or_charges( tripoint( x, y, abs_sub.z ), obj, overflow );
 }
@@ -4446,7 +4438,7 @@ units::volume map::free_volume( const tripoint &p )
     return i_at( p ).free_volume();
 }
 
-item &map::add_item_or_charges( const tripoint &pos, const item &obj, bool overflow )
+item &map::add_item_or_charges( const tripoint &pos, item obj, bool overflow )
 {
     // Checks if item would not be destroyed if added to this tile
     auto valid_tile = [&]( const tripoint &e ) {
@@ -4498,6 +4490,10 @@ item &map::add_item_or_charges( const tripoint &pos, const item &obj, bool overf
     }
 
     if( !has_flag( "NOITEM", pos ) && valid_limits( pos ) ) {
+        if( obj.on_drop( pos ) ) {
+            return nulitem;
+        }
+
         // If tile can contain items place here...
         return place_item( pos );
 
@@ -4506,9 +4502,18 @@ item &map::add_item_or_charges( const tripoint &pos, const item &obj, bool overf
         auto tiles = closest_tripoints_first( 2, pos );
         tiles.erase( tiles.begin() ); // we already tried this position
         for( const auto &e : tiles ) {
-            if( valid_tile( e ) && !has_flag( "NOITEM", e ) && valid_limits( e ) ) {
-                return place_item( e );
+            if( !inbounds( e ) ) {
+                continue;
             }
+
+            if( obj.on_drop( e ) ) {
+                return nulitem;
+            }
+
+            if( !valid_tile( e ) || has_flag( "NOITEM", e ) || !valid_limits( e ) ) {
+                continue;
+            }
+            return place_item( e );
         }
     }
 
@@ -4596,6 +4601,23 @@ item map::water_from( const tripoint &p )
     return item();
 }
 
+void map::make_active( item_location &loc )
+{
+    item *target = loc.get_item();
+
+    // Trust but verify, don't let stinking callers set items active when they shouldn't be.
+    if( !target->needs_processing() ) {
+        return;
+    }
+    int lx, ly;
+    submap *const current_submap = get_submap_at( loc.position(), lx, ly );
+    auto &item_stack = current_submap->itm[lx][ly];
+    auto iter = std::find_if( item_stack.begin(), item_stack.end(),
+                              [&target]( const item &i ) { return &i == target; } );
+
+    current_submap->active_items.add( iter, point(lx, ly) );
+}
+
 // Check if it's in a fridge and is food, set the fridge
 // date to current time, and also check contents.
 static void apply_in_fridge(item &it)
@@ -4653,15 +4675,17 @@ static bool process_map_items( item_stack &items, std::list<item>::iterator &n,
 
 static void process_vehicle_items( vehicle *cur_veh, int part )
 {
-    const bool fridge_here = cur_veh->has_part( "FRIDGE", true ) && cur_veh->part_flag(part, VPFLAG_FRIDGE);
+    const bool fridge_here = cur_veh->part_flag( part, VPFLAG_FRIDGE ) && cur_veh->has_part( "FRIDGE", true );
     if( fridge_here ) {
         for( auto &n : cur_veh->get_items( part ) ) {
             apply_in_fridge(n);
         }
     }
-    if( cur_veh->has_part( "RECHARGE", true ) && cur_veh->part_with_feature(part, VPFLAG_RECHARGE) >= 0 ) {
+    if( cur_veh->part_with_feature( part, VPFLAG_RECHARGE ) >= 0 && cur_veh->has_part( "RECHARGE", true ) ) {
         for( auto &n : cur_veh->get_items( part ) ) {
-            if( !n.is_tool() || ( !n.has_flag("RECHARGE") && !n.has_flag("USE_UPS") ) ) {
+            static const std::string recharge_s( "RECHARGE" );
+            static const std::string ups_s( "USE_UPS" );
+            if( !n.has_flag( recharge_s ) && !n.has_flag( ups_s ) ) {
                 continue;
             }
             if( n.ammo_capacity() > n.ammo_remaining() ) {
@@ -5491,8 +5515,14 @@ bool map::add_field(const tripoint &p, const field_id t, int density, const int 
     // TODO: Make it skip transparent fields
     set_transparency_cache_dirty( p.z );
 
+    const field_t &ft = fieldlist[t];
     if( field_type_dangerous( t ) ) {
         set_pathfinding_cache_dirty( p.z );
+    }
+
+    // Ensure blood type fields don't hang in the air
+    if( zlevels && ft.accelerated_decay ) {
+        support_dirty( p );
     }
 
     return true;
@@ -6705,11 +6735,25 @@ void map::loadn( const int gridx, const int gridy, const int gridz, const bool u
     set_pathfinding_cache_dirty( gridz );
     setsubmap( gridn, tmpsub );
 
-    for( auto it : tmpsub->vehicles ) {
-        // Always fix submap coords for easier z-level-related operations
-        it->smx = gridx;
-        it->smy = gridy;
-        it->smz = gridz;
+    // Destroy bugged no-part vehicles
+    auto &veh_vec = tmpsub->vehicles;
+    for( auto iter = veh_vec.begin(); iter != veh_vec.end(); ) {
+        auto *veh = *iter;
+        if( !veh->parts.empty() ) {
+            // Always fix submap coords for easier z-level-related operations
+            veh->smx = gridx;
+            veh->smy = gridy;
+            veh->smz = gridz;
+            iter++;
+        } else {
+            reset_vehicle_cache( gridz );
+            if( veh->tracking_on ) {
+                overmap_buffer.remove_vehicle( veh );
+            }
+            dirty_vehicle_list.erase( veh );
+            delete( veh );
+            iter = veh_vec.erase( iter );
+        }
     }
 
     // Update vehicle data
@@ -7027,7 +7071,7 @@ void map::actualize( const int gridx, const int gridy, const int gridz )
 
             const auto &furn = this->furn( pnt ).obj();
             // plants contain a seed item which must not be removed under any circumstances
-            if( !furn.has_flag( "PLANT" ) ) {
+            if( !furn.has_flag( "DONT_REMOVE_ROTTEN" ) ) {
                 remove_rotten_items( tmpsub->itm[x][y], pnt );
             }
 

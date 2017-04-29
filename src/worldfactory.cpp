@@ -34,7 +34,7 @@ WORLD::WORLD()
 {
     world_name = get_next_valid_worldname();
     std::ostringstream path;
-    path << FILENAMES["savedir"] << world_name;
+    path << FILENAMES["savedir"] << utf8_to_native( world_name );
     world_path = path.str();
     WORLD_OPTIONS = get_options().get_world_defaults();
 
@@ -89,7 +89,7 @@ WORLDPTR worldfactory::add_world( WORLDPTR retworld )
     all_worldnames.push_back( retworld->world_name );
 
     std::ostringstream path;
-    path << FILENAMES[ "savedir" ] << retworld->world_name;
+    path << FILENAMES[ "savedir" ] << utf8_to_native( retworld->world_name );
     retworld->world_path = path.str();
 
     if( !save_world( retworld ) ) {
@@ -192,7 +192,7 @@ WORLDPTR worldfactory::make_new_world(special_game_id special_type)
     all_worldnames.push_back(worldname);
 
     std::ostringstream path;
-    path << FILENAMES["savedir"] << worldname;
+    path << FILENAMES["savedir"] << utf8_to_native( worldname );
     special_world->world_path = path.str();
 
     if (!save_world(special_world)) {
@@ -220,7 +220,7 @@ WORLDPTR worldfactory::convert_to_world(std::string origin_path)
     newworld->world_name = worldname;
 
     std::ostringstream path;
-    path << FILENAMES["savedir"] << worldname;
+    path << FILENAMES["savedir"] << utf8_to_native( worldname );
     newworld->world_path = path.str();
 
     // save world as conversion world
@@ -325,7 +325,7 @@ std::map<std::string, WORLDPTR> worldfactory::get_all_worlds()
         // the directory name is the name of the world
         std::string worldname;
         unsigned name_index = world_dir.find_last_of( "/\\" );
-        worldname = world_dir.substr( name_index + 1 );
+        worldname = native_to_utf8( world_dir.substr( name_index + 1 ) );
 
         // create and store the world
         retworlds[worldname] = new WORLD();
@@ -1299,14 +1299,16 @@ to continue, or <color_yellow>%s</color> to go back and review your world."), ct
 void worldfactory::draw_modselection_borders(WINDOW *win, input_context *ctxtp)
 {
     // make appropriate lines: X & Y coordinate of starting point, length, horizontal/vertical type
-    int xs[] = {1, 1, (FULL_SCREEN_WIDTH / 2) + 2, (FULL_SCREEN_WIDTH / 2) - 4,
-                (FULL_SCREEN_WIDTH / 2) + 2
-               };
-    int ys[] = {FULL_SCREEN_HEIGHT - 8, 4, 4, 3, 3};
-    int ls[] = {FULL_SCREEN_WIDTH - 2, (FULL_SCREEN_WIDTH / 2) - 4, (FULL_SCREEN_WIDTH / 2) - 3,
-                FULL_SCREEN_HEIGHT - 11, 1
-               };
-    bool hv[] = {true, true, true, false, false}; // horizontal line = true, vertical line = false
+    std::array<int, 5> xs = {{
+        1, 1, ( FULL_SCREEN_WIDTH / 2 ) + 2, ( FULL_SCREEN_WIDTH / 2 ) - 4,
+        ( FULL_SCREEN_WIDTH / 2 ) + 2
+    }};
+    std::array<int, 5> ys = {{FULL_SCREEN_HEIGHT - 8, 4, 4, 3, 3}};
+    std::array<int, 5> ls = {{
+        FULL_SCREEN_WIDTH - 2, ( FULL_SCREEN_WIDTH / 2 ) - 4,
+        ( FULL_SCREEN_WIDTH / 2 ) - 3, FULL_SCREEN_HEIGHT - 11, 1
+    }};
+    std::array<bool, 5> hv = {{true, true, true, false, false}}; // horizontal line = true, vertical line = false
 
     for (int i = 0; i < 5; ++i) {
         int x = xs[i];
@@ -1439,7 +1441,7 @@ void WORLD::load_options( JsonIn &jsin )
     }
     // for legacy saves, try to simulate old city_size based density
     if( WORLD_OPTIONS.count( "CITY_SPACING" ) == 0 ) {
-        WORLD_OPTIONS["CITY_SPACING"].setValue( 5 - get_option<int>( "CITY_SIZE" ) / 3 );
+        WORLD_OPTIONS["CITY_SPACING"].setValue( 5 - get_world_option<int>( "CITY_SIZE" ) / 3 );
     }
 
     WORLD_OPTIONS[ "CORE_VERSION" ].setValue( version );
@@ -1454,7 +1456,8 @@ void WORLD::load_legacy_options( std::istream &fin )
         if( sLine != "" && sLine[0] != '#' && std::count( sLine.begin(), sLine.end(), ' ' ) == 1 ) {
             int ipos = sLine.find( ' ' );
             // make sure that the option being loaded is part of the world_default page in OPTIONS
-            if( get_options().get_option( sLine.substr( 0, ipos ) ).getPage() == "world_default" ) {
+            // In 0.C some lines consisted of a space and nothing else
+            if( ipos != 0 && get_options().get_option( sLine.substr( 0, ipos ) ).getPage() == "world_default" ) {
                 WORLD_OPTIONS[sLine.substr( 0, ipos )].setValue( sLine.substr( ipos + 1, sLine.length() ) );
             }
         }

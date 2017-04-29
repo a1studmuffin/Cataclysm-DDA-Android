@@ -1,3 +1,4 @@
+#pragma once
 #ifndef EFFECT_H
 #define EFFECT_H
 
@@ -96,6 +97,9 @@ class effect_type
         // TODO: Once addictions are JSON-ized it should be trivial to convert this to a
         // "generic" addiction reduces value
         bool pkill_addict_reduces;
+        // This flag is hardcoded for specific IDs now
+        // It needs to be set for monster::move_effects
+        bool impairs_movement;
 
         std::vector<std::string> name;
         std::string speed_mod_name;
@@ -157,11 +161,11 @@ class effect : public JsonSerializer, public JsonDeserializer
         /** Returns the maximum duration of an effect. */
         int get_max_duration() const;
         /** Sets the duration, capping at max_duration if it exists. */
-        void set_duration( int dur );
+        void set_duration( int dur, bool alert = false );
         /** Mods the duration, capping at max_duration if it exists. */
-        void mod_duration( int dur );
+        void mod_duration( int dur, bool alert = false );
         /** Multiplies the duration, capping at max_duration if it exists. */
-        void mult_duration( double dur );
+        void mult_duration( double dur, bool alert = false );
 
         /** Returns the turn the effect was applied. */
         int get_start_turn() const;
@@ -185,6 +189,7 @@ class effect : public JsonSerializer, public JsonDeserializer
 
         /**
          * Sets inensity of effect capped by range [1..max_intensity]
+         * @param val Value to set intensity to
          * @param alert whether decay messages should be displayed
          * @return new intensity of the effect after val subjected to above cap
          */
@@ -192,6 +197,7 @@ class effect : public JsonSerializer, public JsonDeserializer
 
         /**
          * Modify inensity of effect capped by range [1..max_intensity]
+         * @param mod Amount to increase current intensity by
          * @param alert whether decay messages should be displayed
          * @return new intensity of the effect after modification and capping
          */
@@ -241,6 +247,9 @@ class effect : public JsonSerializer, public JsonDeserializer
 
         /** Returns the value used for display on the speed modifier window in the player status menu. */
         std::string get_speed_name() const;
+
+        /** Returns if the effect is supposed to be handed in Creature::movement */
+        bool impairs_movement() const;
 
         /** Returns the effect's matching effect_type id. */
         const efftype_id &get_id() const {

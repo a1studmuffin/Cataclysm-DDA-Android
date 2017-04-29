@@ -1,7 +1,7 @@
 # Reference: https://developer.android.com/ndk/guides/application_mk.html
 
 # See CPLUSPLUS-SUPPORT.html in the NDK documentation for more information
-APP_STL := gnustl_static
+APP_STL := gnustl_shared
 APP_CPPFLAGS += -std=c++11
 
 # armeabi-v7a covers 98.5%, x86 is 1.5%, armeabi is 0%

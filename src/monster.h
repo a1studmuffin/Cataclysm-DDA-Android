@@ -1,3 +1,4 @@
+#pragma once
 #ifndef MONSTER_H
 #define MONSTER_H
 
@@ -42,6 +43,12 @@ enum monster_attitude {
     MATT_ATTACK,
     MATT_ZLAVE,
     NUM_MONSTER_ATTITUDES
+};
+
+enum monster_effect_cache_fields {
+    MOVEMENT_IMPAIRED = 0,
+    FLEEING,
+    NUM_MEFF
 };
 
 class monster : public Creature, public JsonSerializer, public JsonDeserializer
@@ -95,6 +102,8 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
         bool is_symbol_highlighted() const override;
 
         nc_color color_with_effects() const; // Color with fire, beartrapped, etc.
+
+        std::string extended_description() const override;
         // Inverts color if inv==true
         bool has_flag( const m_flag f ) const override; // Returns true if f is set (see mtype.h)
         bool can_see() const;      // MF_SEES and no ME_BLIND
@@ -148,6 +157,7 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
          * This will cause the monster to slowly move towards the destination,
          * unless there is an overriding smell or plan.
          *
+         * @param p Destination of monster's wonderings
          * @param f The priority of the destination, as well as how long we should
          *          wander towards there.
          */
@@ -175,6 +185,7 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
          * costs at the target, an existing NPC or monster, this function simply
          * aborts and does nothing.
          *
+         * @param p Destination of movement
          * @param force If this is set to true, the movement will happen even if
          *              there's currently something blocking the destination.
          *
@@ -205,6 +216,7 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
          * Try to push away whatever occupies p, then step in.
          * May recurse and try to make the creature at p push further.
          *
+         * @param p Location of pushed object
          * @param boost A bonus on the roll to represent a horde pushing from behind
          * @param depth Number of recursions so far
          *
@@ -306,6 +318,8 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
                      float difficulty = INT_MIN, dealt_projectile_attack const *const proj = nullptr ) override;
         // Get torso - monsters don't have body parts (yet?)
         body_part get_random_body_part( bool main ) const override;
+        /** Returns vector containing all body parts this monster has. That is, { bp_torso } */
+        std::vector<body_part> get_all_body_parts( bool main = false ) const override;
 
         /** Resets a given special to its monster type cooldown value */
         void reset_special( const std::string &special_name );
@@ -317,6 +331,10 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
         void disable_special( const std::string &special_name );
 
         void process_turn() override;
+        /** Resets the value of all bonus fields to 0, clears special effect flags. */
+        void reset_bonuses() override;
+        /** Resets stats, and applies effects in an idempotent manner */
+        void reset_stats() override;
 
         void die( Creature *killer ) override; //this is the die from Creature, it calls kill_mon
         void drop_items_on_death();
@@ -335,6 +353,7 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
         /**
          * Makes monster react to heard sound
          *
+         * @param from Location of the sound source
          * @param source_volume Volume at the center of the sound source
          * @param distance Distance to sound source (currently just rl_dist)
          */
@@ -390,9 +409,9 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
         std::map<std::string, int> ammo;
 
         /**
-         * Convert this monster into an item (see @ref mtype::revet_to_itype).
+         * Convert this monster into an item (see @ref mtype::revert_to_itype).
          * Only useful for robots and the like, the monster must have at least
-         * a non-empty item id as revet_to_itype.
+         * a non-empty item id as revert_to_itype.
          */
         item to_item() const;
         /**
@@ -429,6 +448,7 @@ class monster : public Creature, public JsonSerializer, public JsonDeserializer
         int upgrade_time;
         /** Found path. Note: Not used by monsters that don't pathfind! **/
         std::vector<tripoint> path;
+        std::bitset<NUM_MEFF> effect_cache;
 
     protected:
         void store( JsonOut &jsout ) const;

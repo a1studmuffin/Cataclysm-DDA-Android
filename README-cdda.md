@@ -26,6 +26,7 @@ Since Cataclysm-DDA supports a graphical tiles build using the [SDL](https://www
 
 Here's a rundown of what's in each folder:
 
+<<<<<<< HEAD
 `assets/android` - Android-specific game assets.  
 `assets/data` - An exact copy of Cataclysm-DDA's [data](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/data) folder.  
 `assets/gfx` - An exact copy of Cataclysm-DDA's [gfx](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/gfx) folder.  
@@ -34,6 +35,9 @@ Here's a rundown of what's in each folder:
 `jni/` - C/C++ source code for all native libraries. Includes modified versions of external libraries `SDL2-2.0.5`, `SDL2_image-2.0.1`, `SDL2_mixer-2.0.1`, `SDL2_ttf-2.0.14`, `lua5.1.5`, and `libintl-lite-0.5` (a lightweight `gettext` replacement). Also includes `src` which is a modified version of Cataclysm-DDA's [src](https://github.com/CleverRaven/Cataclysm-DDA/tree/master/src) folder. All changes are guarded with `__ANDROID__` preprocessor defines.  
 `res/` - Android app resources (icons etc.)  
 `src/` - Java app source code. Note that some changes have been made to [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/src/org/libsdl/app/SDLActivity.java) from the original SDL Android project template's [SDLActivity.java](https://github.com/a1studmuffin/Cataclysm-DDA-Android/blob/master/jni/SDL2/android-project/src/org/libsdl/app/SDLActivity.java).
+=======
+Please read [COMPILING.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/COMPILING.md) - it covers general information and more specific recipes for Linux, OS X, Windows and BSD. We also have an "unofficial" guide on building with `cmake` at [COMPILING-CMAKE.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/COMPILING-CMAKE.md). See [doc/COMPILER_SUPPORT.md](https://github.com/CleverRaven/Cataclysm-DDA/blob/master/doc/COMPILER_SUPPORT.md) for details on which compilers we support. And you can always dig for more information in `doc/`.
+>>>>>>> cdda-upstream/master
 
 ## Compiling
 
@@ -52,7 +56,12 @@ It should also compile under Linux or Mac OS if your environment is set up corre
 
 You'll need commands `ndk-build` and `ant` to build the APK, as well as `adb` to deploy the APK to a device. 
 
+<<<<<<< HEAD
 For more information see the relevant platform installation guide for each dependency above.
+=======
+Wiki:
+http://tools.cataclysmdda.com/wiki
+>>>>>>> cdda-upstream/master
 
 ### Steps
 

@@ -83,12 +83,11 @@
       [ "rag", 1 ],
       [ "felt_patch", 1 ],
       [ "duct_tape", 50 ],
-      [ "string_6", 2 ],
+      [ "cordage_short", 2, "LIST" ],
       [ "sinew", 50 ],
       [ "thread", 50 ],
       [ "yarn", 50 ],
-      [ "plant_fibre", 50 ],
-      [ "withered", 1 ]
+      [ "plant_fibre", 50 ]
     ],
     [
       [ "scrap_copper", 2 ],
@@ -110,10 +109,11 @@
     [
       [ "rag", 1 ],
       [ "duct_tape", 50 ],
-      [ "string_6", 2 ],
+      [ "cordage_short", 2, "LIST" ],
       [ "sinew", 100 ],
       [ "thread", 100 ],
-      [ "plant_fibre", 100 ]
+      [ "plant_fibre", 100 ],
+      [ "yarn", 100 ]
     ],
     [
       [ "spike", 1 ]
@@ -192,7 +192,8 @@
     [
       [ "plant_fibre", 20 ],
       [ "sinew", 20 ],
-      [ "thread", 20 ]
+      [ "thread", 20 ],
+      [ "yarn", 20 ]
     ]
   ]
 },{
@@ -206,12 +207,7 @@
   "time": 3000,
   "reversible": true,
   "autolearn": true,
-  "components": [
-    [
-      [ "string_36", 3 ],
-      [ "string_6", 18 ]
-    ]
-  ]
+  "using": [ [ "cordage", 3 ] ]
 },{
   "type" : "recipe",
   "result": "slingshot",
@@ -288,6 +284,7 @@
       [ "plant_fibre", 20 ],
       [ "sinew", 20 ],
       [ "thread", 20 ],
+      [ "yarn", 20 ],
       [ "duct_tape", 20 ]
     ]
   ]
@@ -331,7 +328,7 @@
       [ "thread", 20 ],
       [ "yarn", 20 ],
       [ "duct_tape", 20 ],
-      [ "withered", 1 ]
+      [ "cordage_short", 1, "LIST" ]
     ],
     [
       [ "scrap_copper", 3 ],
@@ -367,8 +364,7 @@
       [ "fur", 1 ]
     ],
     [
-      [ "string_6", 9 ],
-      [ "string_36", 2 ],
+      [ "cordage", 2, "LIST" ],
       [ "duct_tape", 75 ]
     ],
     [
@@ -407,6 +403,7 @@
       [ "plant_fibre", 20 ],
       [ "sinew", 20 ],
       [ "thread", 20 ],
+      [ "yarn", 20 ],
       [ "duct_tape", 20 ]
     ]
   ]
@@ -468,8 +465,7 @@
       [ "fur", 1 ]
     ],
     [
-      [ "string_6", 6 ],
-      [ "string_36", 1 ],
+      [ "cordage", 1, "LIST" ],
       [ "duct_tape", 50 ]
     ]
   ]
@@ -530,7 +526,8 @@
       [ "string_36", 2 ],
       [ "thread", 200 ],
       [ "sinew", 200 ],
-      [ "plant_fibre", 200 ]
+      [ "plant_fibre", 200 ],
+      [ "yarn", 200 ]
     ]
   ]
 },{
@@ -552,10 +549,11 @@
       [ "2x4", 1 ]
     ],
     [
-      [ "string_36", 2 ],
+      [ "cordage", 2, "LIST" ],
       [ "thread", 200 ],
       [ "sinew", 200 ],
-      [ "plant_fibre", 200 ]
+      [ "plant_fibre", 200 ],
+      [ "yarn", 200 ]
     ]
   ]
 },{
@@ -583,7 +581,8 @@
       [ "string_36", 2 ],
       [ "thread", 200 ],
       [ "sinew", 200 ],
-      [ "plant_fibre", 200 ]
+      [ "plant_fibre", 200 ],
+      [ "yarn", 200 ]
     ]
   ]
 },{
@@ -612,7 +611,8 @@
       [ "string_36", 2 ],
       [ "thread", 200 ],
       [ "sinew", 200 ],
-      [ "plant_fibre", 200 ]
+      [ "plant_fibre", 200 ],
+      [ "yarn", 200 ]
     ]
   ]
 },{
@@ -643,10 +643,8 @@
   "time": 5000,
   "reversible": true,
   "autolearn": true,
+  "using": [ [ "cordage", 8 ] ],
   "components": [
-    [
-      [ "string_36", 8 ]
-    ],
     [
       [ "steel_chunk", 4 ]
     ],
@@ -1249,23 +1247,25 @@
   "difficulty": 7,
   "time": 270000,
   "autolearn": true,
-  "qualities":[
-    {"id":"SAW_M_FINE","level":1},
-    {"id":"SCREW_FINE","level":1},
-    {"id":"GLARE","level":1}
-  ], "tools": [
+  "qualities": [
+    { "id": "HAMMER_FINE", "level": 1 },
+    { "id": "SAW_M_FINE", "level": 1 },
+    { "id": "SCREW_FINE", "level": 1 },
+    { "id": "GLARE", "level": 1 }
+  ],
+  "tools": [
       [
           [ "oxy_torch", 7 ],
           [ "welder", 36 ],
           [ "welder_crude", 54 ],
           [ "toolset", 54 ],
           [ "small_repairkit", 180 ],
-          [ "large_repairkit", 36 ]
+          [ "large_repairkit", 75 ]
           ]
       ],
       "components": [
     [
-      [ "pipe", 1 ]
+      [ "pipe", 2 ]
     ],
     [
       [ "nail", 2 ]
@@ -1677,14 +1677,9 @@
   "time": 500,
   "reversible": true,
   "autolearn": true,
+  "using": [ [ "cordage", 1 ] ],
   "components": [
-    [
-      [ "spike", 1 ]
-    ],
-    [
-      [ "string_36", 1 ]
-    ]
-  ]
+    [ [ "spike", 1 ] ] ]
 },{
   "type" : "recipe",
   "result": "sword_bayonet",
@@ -1730,14 +1725,8 @@
   "time": 500,
   "reversible": true,
   "autolearn": true,
-  "components": [
-    [
-      [ "spike", 1 ]
-    ],
-    [
-      [ "string_6", 2 ]
-    ]
-  ]
+  "using": [ [ "cordage_short", 2 ] ],
+  "components": [ [ [ "spike", 1 ] ] ]
 },{
   "type" : "recipe",
   "result": "crafted_suppressor",
@@ -1814,16 +1803,9 @@
   "time": 65000,
   "reversible": true,
   "autolearn": true,
-  "tools": [
-    [
-      [ "sewing_kit", 4 ]
-    ]
-  ],
-  "components": [
-    [
-      [ "rag", 4 ]
-    ]
-  ]
+  "using": [ [ "filament", 4 ] ],
+  "qualities": [ { "id": "SEW", "level": 1 } ],
+  "components": [ [ [ "rag", 4 ] ] ]
 },{
   "type" : "recipe",
   "result": "adjustable_stock",
@@ -2858,12 +2840,10 @@
   "time": 5000,
   "reversible": true,
   "autolearn": true,
+  "using": [ [ "cordage", 4 ] ],
   "qualities":[
     {"id":"HAMMER","level":1}
   ], "components": [
-    [
-      [ "string_36", 4 ]
-    ],
     [
       [ "nail", 16 ]
     ],
@@ -4228,6 +4208,7 @@
       [ "plant_fibre", 20 ],
       [ "sinew", 20 ],
       [ "thread", 20 ],
+      [ "yarn", 20 ],
       [ "duct_tape", 20 ]
      ]
     ]

@@ -26,13 +26,14 @@
 #include "item_group.h"
 #include "cata_utility.h"
 #include "uistate.h"
+#include "string_input_popup.h"
 
 #include <algorithm>
 #include <map>
 #include <sstream>
 
+static const skill_id skill_fabrication( "fabrication" );
 static const skill_id skill_electronics( "electronics" );
-static const skill_id skill_carpentry( "carpentry" );
 static const skill_id skill_unarmed( "unarmed" );
 static const skill_id skill_throw( "throw" );
 
@@ -62,6 +63,8 @@ void done_dig_stair( const tripoint & );
 void done_mine_downstair( const tripoint & );
 void done_mine_upstair( const tripoint & );
 void done_window_curtains( const tripoint & );
+
+void failure_standard( const tripoint & );
 };
 
 // Helper functions, nobody but us needs to call these.
@@ -146,14 +149,14 @@ nc_color construction_color( std::string &con_name, bool highlight )
             }
         }
         if( con_first != nullptr ) {
-            int pskill = g->u.get_skill_level( con_first->skill );
-            int diff = con_first->difficulty;
-            if( pskill < diff ) {
-                col = c_red;
-            } else if( pskill == diff ) {
-                col = c_ltblue;
-            } else {
-                col = c_white;
+            col = c_white;
+            for( const auto &pr : con_first->required_skills ) {
+                int s_lvl = g->u.get_skill_level( pr.first );
+                if( s_lvl < pr.second ) {
+                    col = c_red;
+                } else if( s_lvl < pr.second * 1.25 ) {
+                    col = c_ltblue;
+                }
             }
         }
     }
@@ -196,13 +199,12 @@ void construction_menu()
     draw_grid( w_con, w_list_width + w_list_x0 );
 
     //tabcount needs to be increased to add more categories
-    int tabcount = 10;
-    std::string construct_cat[] = {_( "All" ), _( "Constructions" ), _( "Furniture" ),
-                                   _( "Digging and Mining" ), _( "Repairing" ),
-                                   _( "Reinforcing" ), _( "Decorative" ),
-                                   _( "Farming and Woodcutting" ), _( "Others" ),
-                                   _( "Filter" )
-                                  };
+    const int tabcount = 10;
+    std::array<std::string, tabcount> construct_cat = {{
+        _( "All" ), _( "Constructions" ), _( "Furniture" ), _( "Digging and Mining" ),
+        _( "Repairing" ), _( "Reinforcing" ), _( "Decorative" ), _( "Farming and Woodcutting" ),
+        _( "Others" ), _( "Filter" )
+    }};
 
     bool update_info = true;
     bool update_cat = true;
@@ -413,12 +415,29 @@ void construction_menu()
 
                         current_line.str( "" );
                         // display required skill and difficulty
-                        int pskill = g->u.get_skill_level( current_con->skill );
-                        int diff = ( current_con->difficulty > 0 ) ? current_con->difficulty : 0;
+                        if( current_con->required_skills.empty() ) {
+                            current_line << _( "N/A" );
+                        } else {
+                            current_line <<
+                                enumerate_as_string( current_con->required_skills.begin(),
+                                                     current_con->required_skills.end(),
+                                                     []( const std::pair<skill_id, int> &skill ) {
+                                nc_color col;
+                                int s_lvl = g->u.get_skill_level( skill.first );
+                                if( s_lvl < skill.second ) {
+                                    col = c_red;
+                                } else if( s_lvl < skill.second * 1.25 ) {
+                                    col = c_ltblue;
+                                } else {
+                                    col = c_white;
+                                }
 
-                        current_line << "<color_" << string_from_color( ( pskill >= diff ? c_white : c_red ) ) << ">" <<
-                                     string_format( _( "Skill Req: %d (%s)" ), diff,
-                                                    current_con->skill.obj().name().c_str() ) << "</color>";
+                                std::string color_s = "<color_" + string_from_color( col ) + ">";
+                                return string_format( "%s%s (%d)</color>", color_s.c_str(),
+                                                      skill.first.obj().name().c_str(), skill.second );
+                            }, false );
+                        }
+
                         current_buffer.push_back( current_line.str() );
                         // TODO: Textify pre_flags to provide a bit more information.
                         // Example: First step of dig pit could say something about
@@ -435,6 +454,12 @@ void construction_menu()
                                              _( "Requires: %s" ), require_string.c_str() ) << "</color>";
                             std::vector<std::string> folded_result_string = foldstring( current_line.str(),
                                     available_window_width );
+                            current_buffer.insert( current_buffer.end(), folded_result_string.begin(),
+                                                   folded_result_string.end() );
+                        }
+                        if( !current_con->pre_note.empty() ) {
+                            std::vector<std::string> folded_result_string =
+                                foldstring( _( current_con->pre_note.c_str() ), available_window_width );
                             current_buffer.insert( current_buffer.end(), folded_result_string.begin(),
                                                    folded_result_string.end() );
                         }
@@ -509,7 +534,12 @@ void construction_menu()
 
         const std::string action = ctxt.handle_input();
         if( action == "FILTER" ){
-            filter = string_input_popup( _( "Search" ), 50, filter, "", _( "Filter" ), 100, false );
+            string_input_popup()
+            .title( _( "Search" ) )
+            .width( 50 )
+            .description( _( "Filter" ) )
+            .max_length( 100 )
+            .edit( filter );
             if( !filter.empty() ){
                 update_info = true;
                 update_cat = true;
@@ -609,13 +639,21 @@ bool player_can_build( player &p, const inventory &pinv, const std::string &desc
     return false;
 }
 
+bool character_has_skill_for( const Character &c, const construction &con )
+{
+    return std::all_of( con.required_skills.begin(), con.required_skills.end(),
+    [&]( const std::pair<skill_id, int> &pr ) {
+        return c.get_skill_level( pr.first ) >= pr.second;
+    } );
+}
+
 bool player_can_build( player &p, const inventory &pinv, const construction &con )
 {
     if( p.has_trait( "DEBUG_HS" ) ) {
         return true;
     }
 
-    if( p.get_skill_level( con.skill ) < con.difficulty ) {
+    if( !character_has_skill_for( p, con ) ) {
         return false;
     }
     return con.requirements->can_make_with_inventory( pinv );
@@ -703,7 +741,7 @@ void place_construction( const std::string &desc )
     }
 
     if( valid.find( dirp ) == valid.end() ) {
-        add_msg( m_info, _( "You cannot build there!" ) );
+        cons.front()->explain_failure( dirp );
         return;
     }
 
@@ -717,23 +755,25 @@ void complete_construction()
     player &u = g->u;
     const construction &built = constructions[u.activity.index];
 
-    u.practice( built.skill, ( int )( ( 10 + 15 * built.difficulty ) * ( 1 + built.time / 30000.0 ) ),
-                ( int )( built.difficulty * 1.25 ) );
+    const auto award_xp = [&]( player &c ) {
+        for( const auto &pr : built.required_skills ) {
+            c.practice( pr.first, ( int )( ( 10 + 15 * pr.second ) * ( 1 + built.time / 30000.0 ) ),
+                        ( int )( pr.second * 1.25 ) );
+        }
+    };
 
+    award_xp( g->u );
 
     // Friendly NPCs gain exp from assisting or watching...
     for( auto &elem : g->u.get_crafting_helpers() ) {
-        //If the NPC can understand what you are doing, they gain more exp
-        if (elem->get_skill_level(built.skill) >= built.difficulty){
-            elem->practice( built.skill, (int)( (10 + 15*built.difficulty) * (1 + built.time/30000.0) ),
-                                (int)(built.difficulty * 1.25) );
+        if( character_has_skill_for( *elem, built ) ) {
             add_msg(m_info, _("%s assists you with the work..."), elem->name.c_str());
-        //NPC near you isn't skilled enough to help
         } else {
-            elem->practice( built.skill, (int)( (10 + 15*built.difficulty) * (1 + built.time/30000.0) ),
-                                (int)(built.difficulty * 1.25) );
+            //NPC near you isn't skilled enough to help
             add_msg(m_info, _("%s watches you work..."), elem->name.c_str());
         }
+
+        award_xp( *elem );
     }
 
     for( const auto &it : built.requirements->get_components() ) {
@@ -768,24 +808,27 @@ bool construct::check_empty( const tripoint &p )
              g->m.i_at( p ).empty() && g->m.veh_at( p ) == NULL );
 }
 
+inline std::array<tripoint, 4> get_orthogonal_neighbors( const tripoint &p )
+{
+    return {{
+        tripoint( p.x, p.y - 1, p.z ),
+        tripoint( p.x, p.y + 1, p.z ),
+        tripoint( p.x - 1, p.y, p.z ),
+        tripoint( p.x + 1, p.y, p.z )
+    }};
+}
+
 bool construct::check_support( const tripoint &p )
 {
     // need two or more orthogonally adjacent supports
-    int num_supports = 0;
     if( g->m.impassable( p ) ) {
         return false;
     }
-    if( g->m.has_flag( "SUPPORTS_ROOF", tripoint( p.x, p.y - 1, p.z ) ) ) {
-        ++num_supports;
-    }
-    if( g->m.has_flag( "SUPPORTS_ROOF", tripoint( p.x, p.y + 1, p.z ) ) ) {
-        ++num_supports;
-    }
-    if( g->m.has_flag( "SUPPORTS_ROOF", tripoint( p.x - 1, p.y, p.z ) ) ) {
-        ++num_supports;
-    }
-    if( g->m.has_flag( "SUPPORTS_ROOF", tripoint( p.x + 1, p.y, p.z ) ) ) {
-        ++num_supports;
+    int num_supports = 0;
+    for( const tripoint &nb : get_orthogonal_neighbors( p ) ) {
+        if( g->m.has_flag( "SUPPORTS_ROOF", nb ) ) {
+            num_supports++;
+        }
     }
     return num_supports >= 2;
 }
@@ -864,7 +907,10 @@ vpart_id vpart_from_item( const std::string &item_id )
 
 void construct::done_vehicle( const tripoint &p )
 {
-    std::string name = string_input_popup( _( "Enter new vehicle name:" ), 20 );
+    std::string name = string_input_popup()
+                       .title( _( "Enter new vehicle name:" ) )
+                       .width( 20 )
+                       .query_string();
     if( name.empty() ) {
         name = _( "Car" );
     }
@@ -1041,14 +1087,45 @@ void construct::done_window_curtains( const tripoint & )
     g->u.add_msg_if_player( _("After boarding up the window the curtains and curtain rod are left.") );
 }
 
+void construct::failure_standard( const tripoint & )
+{
+    add_msg( m_info, _( "You cannot build there!" ) );
+}
+
+template <typename T>
+void assign_or_debugmsg( T &dest, const std::string &fun_id, const std::map<std::string, T> &possible )
+{
+    const auto iter = possible.find( fun_id );
+    if( iter != possible.end() ) {
+        dest = iter->second;
+    } else {
+        dest = possible.find( "" )->second;
+        const std::string list_available = enumerate_as_string( possible.begin(), possible.end(),
+        []( const std::pair<std::string, T> &pr ) {
+            return pr.first;
+        } );
+        debugmsg( "Unknown function: %s, available values are %s", fun_id.c_str(), list_available.c_str() );
+    }
+};
+
 void load_construction(JsonObject &jo)
 {
     construction con;
     con.id = constructions.size();
 
     con.description = _(jo.get_string("description").c_str());
-    con.skill = skill_id( jo.get_string( "skill", skill_carpentry.str() ) );
-    con.difficulty = jo.get_int("difficulty");
+    if( jo.has_member( "required_skills" ) ) {
+        auto sk = jo.get_array( "required_skills" );
+        while( sk.has_more() ) {
+            auto arr = sk.next_array();
+            con.required_skills[skill_id( arr.get_string( 0 ) )] = arr.get_int( 1 );
+        }
+    } else {
+        skill_id legacy_skill( jo.get_string( "skill", skill_fabrication.str() ) );
+        int legacy_diff = jo.get_int( "difficulty" );
+        con.required_skills[ legacy_skill ] = legacy_diff;
+    }
+
     con.category = jo.get_string("category", "OTHER");
     // constructions use different time units in json, this makes it compatible
     // with recipes/requirements, TODO: should be changed in json
@@ -1062,7 +1139,7 @@ void load_construction(JsonObject &jo)
         requirement_data::load_requirement( jo, req_id );
         con.requirements = requirement_id( req_id );
     }
-
+    con.pre_note = jo.get_string( "pre_note", "" );
     con.pre_terrain = jo.get_string("pre_terrain", "");
     if (con.pre_terrain.size() > 1
         && con.pre_terrain[0] == 'f'
@@ -1082,50 +1159,35 @@ void load_construction(JsonObject &jo)
     }
 
     con.pre_flags = jo.get_tags("pre_flags");
+    
+    static const std::map<std::string, std::function<bool( const tripoint & )>> pre_special_map = {{
+        { "", construct::check_nothing },
+        { "check_empty", construct::check_empty },
+        { "check_support", construct::check_support },
+        { "check_deconstruct", construct::check_deconstruct },
+        { "check_up_OK", construct::check_up_OK },
+        { "check_down_OK", construct::check_down_OK },
+    }};
+    static const std::map<std::string, std::function<void( const tripoint & )>> post_special_map = {{
+        { "", construct::done_nothing },
+        { "done_tree", construct::done_tree },
+        { "done_trunk_log", construct::done_trunk_log },
+        { "done_trunk_plank", construct::done_trunk_plank },
+        { "done_vehicle", construct::done_vehicle },
+        { "done_deconstruct", construct::done_deconstruct },
+        { "done_dig_stair", construct::done_dig_stair },
+        { "done_mine_downstair", construct::done_mine_downstair },
+        { "done_mine_upstair", construct::done_mine_upstair },
+        { "done_window_curtains", construct::done_window_curtains },
+    }};
+    static const std::map<std::string, std::function<void( const tripoint & )>> explain_fail_map = {{
+        { "", construct::failure_standard },
+    }};
 
-    std::string prefunc = jo.get_string("pre_special", "");
-    if (prefunc == "check_empty") {
-        con.pre_special = &construct::check_empty;
-    } else if (prefunc == "check_support") {
-        con.pre_special = &construct::check_support;
-    } else if (prefunc == "check_deconstruct") {
-        con.pre_special = &construct::check_deconstruct;
-    } else if (prefunc == "check_up_OK") {
-        con.pre_special = &construct::check_up_OK;
-    } else if (prefunc == "check_down_OK") {
-        con.pre_special = &construct::check_down_OK;
-    } else {
-        if (prefunc != "") {
-            debugmsg("Unknown pre_special function: %s", prefunc.c_str());
-        }
-        con.pre_special = &construct::check_nothing;
-    }
-
-    std::string postfunc = jo.get_string("post_special", "");
-    if (postfunc == "done_tree") {
-        con.post_special = &construct::done_tree;
-    } else if (postfunc == "done_trunk_log") {
-        con.post_special = &construct::done_trunk_log;
-    } else if (postfunc == "done_trunk_plank") {
-        con.post_special = &construct::done_trunk_plank;
-    } else if (postfunc == "done_vehicle") {
-        con.post_special = &construct::done_vehicle;
-    } else if (postfunc == "done_deconstruct") {
-        con.post_special = &construct::done_deconstruct;
-    } else if (postfunc == "done_dig_stair") {
-        con.post_special = &construct::done_dig_stair;
-    } else if (postfunc == "done_mine_downstair") {
-        con.post_special = &construct::done_mine_downstair;
-    } else if (postfunc == "done_mine_upstair") {
-        con.post_special = &construct::done_mine_upstair;
-    } else if (postfunc == "done_window_curtains") {
-        con.post_special = &construct::done_window_curtains;
-    } else {
-        if (postfunc != "") {
-            debugmsg("Unknown post_special function: %s", postfunc.c_str());
-        }
-        con.post_special = &construct::done_nothing;
-    }
+    assign_or_debugmsg( con.pre_special, jo.get_string( "pre_special", "" ), pre_special_map );
+    assign_or_debugmsg( con.post_special, jo.get_string( "post_special", "" ), post_special_map );
+    assign_or_debugmsg( con.explain_failure, jo.get_string( "explain_failure", "" ), explain_fail_map );
+    con.vehicle_start = jo.get_bool( "vehicle_start", false );
 
     constructions.push_back(con);
 }
@@ -1142,8 +1204,10 @@ void check_constructions()
         const std::string display_name = std::string("construction ") + c->description;
         // Note: print the description as the id is just a generated number,
         // the description can be searched for in the json files.
-        if( !c->skill.is_valid() ) {
-            debugmsg("Unknown skill %s in %s", c->skill.c_str(), display_name.c_str());
+        for( const auto &pr : c->required_skills ) {
+            if( !pr.first.is_valid() ) {
+                debugmsg( "Unknown skill %s in %s", pr.first.c_str(), display_name.c_str() );
+            }
         }
 
         if( !c->requirements.is_valid() ) {
@@ -1189,7 +1253,7 @@ float construction::time_scale() const
     if( get_world_option<int>( "CONSTRUCTION_SCALING" ) == 0 ) {
         return calendar::season_ratio();
     } else {
-        return 100.0 / get_world_option<int>( "CONSTRUCTION_SCALING" );
+        return get_world_option<int>( "CONSTRUCTION_SCALING" ) / 100.0;
     }
 }
 
@@ -1199,7 +1263,7 @@ int construction::adjusted_time() const
     int assistants = 0;
 
     for( auto &elem : g->u.get_crafting_helpers() ) {
-        if( elem->get_skill_level( skill ) >= difficulty ) {
+        if( character_has_skill_for( *elem, *this ) ) {
             assistants++;
         }
     }
@@ -1263,7 +1327,7 @@ void finalize_constructions()
     }
 
     for( construction &con : constructions ) {
-        if( con.post_special == &construct::done_vehicle ) {
+        if( con.vehicle_start ) {
             const_cast<requirement_data &>( con.requirements.obj() ).get_components().push_back( frame_items );
         }
     }

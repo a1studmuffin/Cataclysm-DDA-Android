@@ -6,6 +6,7 @@
 #include "field.h"
 #include "fire.h"
 #include "game.h"
+#include "fungal_effects.h"
 #include "messages.h"
 #include "translations.h"
 #include "material.h"
@@ -1193,7 +1194,8 @@ bool map::process_fields_in_submap( submap *const current_submap,
                         dirty_transparency_cache = true;
                         spread_gas( cur, p, curtype, 33,  5);
                         if( one_in( 10 - 2 * cur->getFieldDensity() ) ) {
-                            g->spread_fungus( p ); //Haze'd terrain
+                            // Haze'd terrain
+                            fungal_effects( *g, g->m ).spread_fungus( p );
                         }
 
                         break;
@@ -2579,10 +2581,16 @@ bool field_type_dangerous( field_id id )
     return ft.dangerous[0] || ft.dangerous[1] || ft.dangerous[2];
 }
 
-void map::emit_field( const tripoint &pos, const emit_id &src )
+void map::emit_field( const tripoint &pos, const emit_id &src, float mul )
 {
-    if( src.is_valid() &&  x_in_y( src->chance(), 100 ) ) {
-        propagate_field( pos, src->field(), src->qty(), src->density() );
+    if( !src.is_valid() ) {
+        return;
+    }
+
+    float chance = src->chance() * mul;
+    if( src.is_valid() &&  x_in_y( chance, 100 ) ) {
+        int qty = chance > 100.0f ? roll_remainder( src->qty() * chance / 100.0f ) : src->qty();
+        propagate_field( pos, src->field(), qty, src->density() );
     }
 }
 

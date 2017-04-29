@@ -764,7 +764,7 @@
         "type":"GENERIC",
         "id" : "baton",
         "name" : "expandable baton",
-        "description" : "A telescoping baton that collapses for easy storage.  Makes an excellent melee weapon.",
+        "description" : "A telescoping baton that collapses for easy storage.  Makes an excellent melee weapon.  Activate to expand.",
         "weight" : 725,
         "to_hit" : 2,
         "color" : "dark_gray",
@@ -773,6 +773,7 @@
         "techniques" : ["WBLOCK_1"],
         "flags" : ["DURABLE_MELEE","BELT_CLIP"],
             "use_action": {
+            "menu_text": "Expand",
             "type": "transform",
             "target": "baton-extended",
             "msg": "You snap open your baton."
@@ -786,7 +787,7 @@
         "id" : "baton-extended",
         "name" : "expandable baton (extended)",
         "name_plural" : "expandable batons (extended)",
-        "description" : "A telescoping baton that collapses for easy storage.  Makes an excellent melee weapon.",
+        "description" : "A telescoping baton that collapses for easy storage.  Makes an excellent melee weapon.  Activate to collapse.",
         "weight" : 725,
         "to_hit" : 2,
         "color" : "dark_gray",
@@ -795,6 +796,7 @@
         "techniques" : ["WBLOCK_1"],
         "flags" : ["DURABLE_MELEE","BELT_CLIP"],
         "use_action": {
+            "menu_text": "Collapse",
             "type": "transform",
             "target": "baton",
             "msg": "You collapse your baton."
@@ -951,6 +953,10 @@
         "volume" : 4,
         "bashing" : 5,
         "cutting" : 11,
+        "thrown_damage" : [
+            { "damage_type": "bash", "amount": 5 },
+            { "damage_type": "stab", "amount": 11 }
+        ],
         "flags" : ["SPEAR"],
         "price" : 4000,
         "qualities": [["COOK", 1]]
@@ -969,6 +975,10 @@
         "volume" : 4,
         "bashing" : 5,
         "cutting" : 17,
+        "thrown_damage" : [
+            { "damage_type": "bash", "amount": 5 },
+            { "damage_type": "stab", "amount": 17 }
+        ],
         "flags" : ["SPEAR", "NONCONDUCTIVE"],
         "price" : 9000,
         "qualities": [["COOK", 1]]
@@ -1181,7 +1191,7 @@
         "category" : "weapons",
         "name" : "PR-24 baton (retracted)",
         "name_plural" : "PR-24 batons (retracted)",
-        "description" : "The Monadnock PR-24 baton is a collapsible, lightweight, side-handle baton used by law enforcement all over the world.  The PR designation is rumored to mean Public Relations.",
+        "description" : "The Monadnock PR-24 baton is a collapsible, lightweight, side-handle baton used by law enforcement all over the world.  The PR designation is rumored to mean Public Relations.  Activate to extend.",
         "weight" : 680,
         "to_hit" : 1,
         "color" : "dark_gray",
@@ -1190,6 +1200,7 @@
         "techniques" : ["WBLOCK_1"],
         "flags" : ["DURABLE_MELEE"],
         "use_action": {
+            "menu_text": "Extend",
             "type": "transform",
             "target": "PR24-extended",
             "msg": "You snap open your PR-24 baton."
@@ -1204,7 +1215,7 @@
         "category" : "weapons",
         "name" : "PR-24 baton (extended)",
         "name_plural" : "PR-24 batons (extended)",
-        "description" : "The Monadnock PR-24 baton is a collapsible, lightweight, side-handle baton used by law enforcement all over the world.  The PR designation is rumored to mean Public Relations.",
+        "description" : "The Monadnock PR-24 baton is a collapsible, lightweight, side-handle baton used by law enforcement all over the world.  The PR designation is rumored to mean Public Relations.  Activate to retract.",
         "weight" : 680,
         "to_hit" : 2,
         "color" : "dark_gray",
@@ -1213,6 +1224,7 @@
         "techniques" : ["WBLOCK_2", "RAPID"],
         "flags" : ["DURABLE_MELEE"],
         "use_action": {
+            "menu_text": "Retract",
             "type": "transform",
             "target": "PR24-retracted",
             "msg": "You collapse your PR-24 baton."

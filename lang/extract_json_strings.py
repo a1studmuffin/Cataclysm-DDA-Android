@@ -4,6 +4,14 @@
 import json
 import os
 import subprocess 
+from optparse import OptionParser
+
+# Must parse command line arguments here
+# 'options' variable is referenced in our defined functions below
+
+parser = OptionParser()
+parser.add_option("-v", "--verbose", dest="verbose", help="be verbose")
+(options, args) = parser.parse_args()
 
 # Exceptions
 class WrongJSONItem(Exception):
@@ -26,6 +34,23 @@ git_files_list = {
     ".",
 }
 
+# no warning will be given if an untranslatable object is found in those files
+warning_suppressed_list = {
+    "data/json/traps.json",
+    "data/json/vehicleparts/",
+    "data/raw/keybindings.json",
+    "data/mods/Arcana/monsters.json",
+    "data/mods/DeoxyMod/Deoxy_vehicle_parts.json",
+    "data/mods/PKs_Rebalance/monsters/",
+    "data/mods/More_Survival_Tools/start_locations.json",
+    "data/mods/Tanks/monsters.json"
+}
+
+def warning_supressed(filename):
+    for i in warning_suppressed_list:
+        if filename.startswith(i):
+            return True
+    return False
 
 # these files will not be parsed. Full related path.
 ignore_files = {
@@ -51,12 +76,14 @@ ignorable = {
     "MONSTER_FACTION",
     "monstergroup",
     "MONSTER_WHITELIST",
-    "npc",      # FIXME right now this object is unextractable
     "overlay_order",
     "overmap_special",
+    "profession_item_substitutions",
+    "palette",
     "region_overlay",
     "region_settings",
     "requirement",
+    "rotatable_symbol",
     "SPECIES",
     "uncraft",
     "vehicle_group",
@@ -82,7 +109,6 @@ automatically_convertible = {
     "BIONIC_ITEM",
     "BOOK",
     "COMESTIBLE",
-    "construction",
     "CONTAINER",
     "dream",
     "ENGINE",
@@ -97,7 +123,10 @@ automatically_convertible = {
     "MAGAZINE",
     "MOD_INFO",
     "MONSTER",
+    "morale_type",
     "mutation",
+    "morale_type",
+    "npc",
     "npc_class",
     "overmap_terrain",
     "skill",
@@ -144,6 +173,20 @@ use_format_strings = {
 ##
 ##  SPECIALIZED EXTRACTION FUNCTIONS
 ##
+
+def extract_bodypart(item):
+    outfile = get_outfile("bodypart")
+    writestr(outfile, item["name"])
+    writestr(outfile, item["name"], context="bodypart_accusative")
+    writestr(outfile, item["encumbrance_text"])
+    writestr(outfile, item["heading_singular"], item["heading_plural"])
+
+
+def extract_construction(item):
+    outfile = get_outfile("construction")
+    writestr(outfile, item["description"])
+    if "pre_note" in item:
+        writestr(outfile, item["pre_note"])
 
 def extract_material(item):
     outfile = get_outfile("material")
@@ -355,17 +398,29 @@ def extract_scenarios(item):
 def extract_mapgen(item):
     outfile = get_outfile("mapgen")
     # writestr will not write string if it is None.
-    for objkey in item["object"]:
+    for (objkey, objval) in sorted(item["object"].items(), key=lambda x: x[0]):
         if objkey == "place_specials" or objkey == "place_signs":
-            for special in item["object"][objkey]:
-                for speckey in special:
+            for special in objval:
+                for (speckey, specval) in sorted(special.items(), key=lambda x: x[0]):
                     if speckey == "signage":
-                        writestr(outfile, special[speckey], comment="Sign")
-        if objkey == "signs":
-            obj = item["object"][objkey]
-            for k in obj.keys():
-                sign = obj[k].get("signage", None)
+                        writestr(outfile, specval, comment="Sign")
+        elif objkey == "signs":
+            obj = objval
+            for (k, v) in sorted(objval.items(), key=lambda x: x[0]):
+                sign = v.get("signage", None)
                 writestr(outfile, sign, comment="Sign")
+
+def extract_monster_attack(item):
+    outfile = get_outfile("monster_attack")
+    if "hit_dmg_u" in item:
+        writestr(outfile, item.get("hit_dmg_u"))
+    if "hit_dmg_npc" in item:
+        writestr(outfile, item.get("hit_dmg_npc"))
+    if "no_dmg_msg_u" in item:
+        writestr(outfile, item.get("no_dmg_msg_u"))
+    if "no_dmg_msg_npc" in item:
+        writestr(outfile, item.get("no_dmg_msg_npc"))
+
 
 def extract_recipes(item):
     outfile = get_outfile("recipe")
@@ -498,12 +553,14 @@ def extract_gate(item):
     outfile = get_outfile("gates")
     messages = item.get("messages", {})
 
-    for message in messages.items():
-        writestr(outfile, message[1],
-                 comment="'{}' action message of some gate object.".format(message[0]))
+    for (k, v) in sorted(messages.items(), key=lambda x: x[0]):
+        writestr(outfile, v,
+                 comment="'{}' action message of some gate object.".format(k))
 
 # these objects need to have their strings specially extracted
 extract_specials = {
+    "body_part": extract_bodypart,
+    "construction": extract_construction,
     "effect_type": extract_effect_type,
     "GUN": extract_gun,
     "GUNMOD": extract_gunmod,
@@ -511,6 +568,7 @@ extract_specials = {
     "martial_art": extract_martial_art,
     "material": extract_material,
     "mission_definition": extract_missiondef,
+    "monster_attack": extract_monster_attack,
     "mutation_category": extract_mutation,
     "profession": extract_professions,
     "recipe_category": extract_recipe_category,
@@ -525,18 +583,19 @@ extract_specials = {
 ##  PREPARATION
 ##
 
+directories = {
+    "data/raw",
+    "data/json",
+    "data/mods",
+    "data/core",
+    "data/legacy"
+}
+to_dir = "lang/json"
+
+print("==> Preparing the work space")
+
 # allow running from main directory, or from script subdirectory
-if os.path.exists("data/json"):
-    raw_dir = "data/raw"
-    json_dir = "data/json"
-    mods_dir = "data/mods"
-    to_dir = "lang/json"
-elif os.path.exists("../data/json"):
-    raw_dir = "../data/raw"
-    json_dir = "../data/json"
-    mods_dir = "../data/mods"
-    to_dir = "../lang/json"
-else:
+if not os.path.exists("data/json"):
     print("Error: Couldn't find the 'data/json' subdirectory.")
     exit(1)
 
@@ -597,6 +656,7 @@ use_action_msgs = {
     "deactive_msg",
     "out_of_power_msg",
     "msg",
+    "menu_text",
     "message",
     "friendly_msg",
     "hostile_msg",
@@ -627,7 +687,7 @@ use_action_msgs = {
 
 def extract_use_action_msgs(outfile, use_action, it_name, kwargs):
     """Extract messages for iuse_actor objects. """
-    for f in use_action_msgs:
+    for f in sorted(use_action_msgs):
         if type(use_action) is dict and f in use_action:
             if it_name:
                 writestr(outfile, use_action[f],
@@ -637,8 +697,8 @@ def extract_use_action_msgs(outfile, use_action, it_name, kwargs):
         for i in use_action:
             extract_use_action_msgs(outfile, i, it_name, kwargs)
     elif type(use_action) is dict:
-        for k in use_action:
-            extract_use_action_msgs(outfile, use_action[k], it_name, kwargs)
+        for (k, v) in sorted(use_action.items(), key=lambda x: x[0]):
+            extract_use_action_msgs(outfile, v, it_name, kwargs)
 
 # extract commonly translatable data from json to fake-python
 def extract(item, infilename):
@@ -673,6 +733,12 @@ def extract(item, infilename):
                 writestr(outfile, name, "{}s".format(name), **kwargs)
             else:
                 writestr(outfile, name, **kwargs)
+        wrote = True
+    if "name_suffix" in item:
+        writestr(outfile, item["name_suffix"], **kwargs)
+        wrote = True
+    if "name_unique" in item:
+        writestr(outfile, item["name_unique"], **kwargs)
         wrote = True
     if "use_action" in item:
         extract_use_action_msgs(outfile, item["use_action"], item.get("name"), kwargs)
@@ -738,7 +804,8 @@ def extract(item, infilename):
        writestr(outfile, item["stop_phrase"], **kwargs)
        wrote = True
     if not wrote:
-        print("WARNING: {}: nothing translatable found in item: {}".format(infilename, item))
+        if not warning_supressed(infilename):
+            print("WARNING: {}: nothing translatable found in item: {}".format(infilename, item))
 
 def is_official_mod(full_path):
     for i in official_mods:
@@ -763,15 +830,18 @@ def extract_all_from_dir(json_dir):
             if full_name in git_files_list:
                 extract_all_from_file(full_name)
             else:
-                print("Skipping untracked file: '{}'".format(full_name))
+                if options.verbose:
+                    print("Skipping untracked file: '{}'".format(full_name))
         elif f not in not_json:
-            print("Skipping file: '{}'".format(f))
+            if options.verbose:
+                print("Skipping file: '{}'".format(f))
     for d in dirs:
         extract_all_from_dir(os.path.join(json_dir, d))
 
 def extract_all_from_file(json_file):
     "Extract translatable strings from every object in the specified file."
-    print("Loading {}".format(json_file))
+    if options.verbose:
+        print("Loading {}".format(json_file))
 
     with open(json_file) as fp:
         jsondata = json.load(fp)
@@ -813,10 +883,13 @@ def prepare_git_file_list():
 ##  EXTRACTION
 ##
 
+print("==> Generating the list of all Git tracked files")
 prepare_git_file_list()
-extract_all_from_dir(json_dir)
-extract_all_from_dir(raw_dir)
-extract_all_from_dir(mods_dir)
+print("==> Parsing JSON")
+for i in sorted(directories):
+    print("----> Traversing directory {}".format(i))
+    extract_all_from_dir(i)
+print("==> Finalizing")
 add_fake_types()
 
 # done.

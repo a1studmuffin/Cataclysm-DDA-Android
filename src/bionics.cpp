@@ -158,7 +158,7 @@ bool player::activate_bionic( int b, bool eff_only )
         charge_power( bionics[bio.id].power_activate );
         bio_gun = item( bionics[bio.id].fake_item );
         g->refresh_all();
-        g->plfire( &bio_gun, bionics[bio.id].power_activate, false );
+        g->plfire( bio_gun, bionics[bio.id].power_activate );
     } else if( bionics[ bio.id ].weapon_bionic ) {
         if( weapon.has_flag( "NO_UNWIELD" ) ) {
             add_msg( m_info, _( "Deactivate your %s first!" ), weapon.tname().c_str() );
@@ -230,7 +230,7 @@ bool player::activate_bionic( int b, bool eff_only )
         mod_moves( -100 );
     } else if( bio.id == "bio_blood_anal" ) {
         static const std::map<efftype_id, std::string> bad_effects = {{
-            { effect_fungus, _( "Fungal Parasite" ) },
+            { effect_fungus, _( "Fungal Infection" ) },
             { effect_dermatik, _( "Insect Parasite" ) },
             { effect_stung, _( "Stung" ) },
             { effect_poison, _( "Poison" ) },
@@ -244,7 +244,7 @@ bool player::activate_bionic( int b, bool eff_only )
             { effect_tapeworm, _( "Intestinal Parasite" ) },
             { effect_bloodworms, _( "Hemolytic Parasites" ) },
             // These little guys are immune to the blood filter too, as they live in your brain.
-            { effect_brainworms, _( "Intracranial Parasite" ) },
+            { effect_brainworms, _( "Intracranial Parasites" ) },
             // These little guys are immune to the blood filter too, as they live in your muscles.
             { effect_paincysts, _( "Intramuscular Parasites" ) },
             // Tetanus infection.
@@ -590,22 +590,23 @@ bool player::deactivate_bionic( int b, bool eff_only )
 }
 
 /**
- *  @param bio the bionic that is meant to be recharged.
- *  @param amount the amount of power that is to be spent recharging the bionic. 
- *  @param factor multiplies the power cost per turn.
- *  @param rate divides the number of turns we may charge (rate of 2 discharges in half the time).
- *  @return indicates whether we successfully charged the bionic.
+ * @param p the player
+ * @param bio the bionic that is meant to be recharged.
+ * @param amount the amount of power that is to be spent recharging the bionic.
+ * @param factor multiplies the power cost per turn.
+ * @param rate divides the number of turns we may charge (rate of 2 discharges in half the time).
+ * @return indicates whether we successfully charged the bionic.
  */
 bool attempt_recharge( player &p, bionic &bio, int &amount, int factor = 1, int rate = 1 ) {
     bionic_data const &info = bio.info();
     const int armor_power_cost = 1;
     int power_cost = info.power_over_time * factor;
     bool recharged = false;
-    
+
     if( power_cost > 0 ) {
         if( info.armor_interface ) {
             // Don't spend any power on armor interfacing unless we're wearing active powered armor.
-            bool powered_armor = std::any_of( p.worn.begin(), p.worn.end(), 
+            bool powered_armor = std::any_of( p.worn.begin(), p.worn.end(),
                 []( const item &w ) { return w.active && w.is_power_armor(); } );
             if( !powered_armor ) {
                 power_cost -= armor_power_cost * factor;
@@ -619,7 +620,7 @@ bool attempt_recharge( player &p, bionic &bio, int &amount, int factor = 1, int 
             recharged = true;
         }
     }
-    
+
     return recharged;
 }
 
@@ -803,9 +804,10 @@ bool player::uninstall_bionic( std::string const &b_id, int skill_level )
         return false;
     }
     //If you are paying the doctor to do it, shouldn't use your supplies
-    if( !( crafting_inv.has_quality( quality_id( "CUT" ) ) && crafting_inv.has_amount( "1st_aid", 1 ) ) &&
+    static const quality_id CUT_FINE( "CUT_FINE" );
+    if( !( crafting_inv.has_quality( CUT_FINE ) && crafting_inv.has_amount( "1st_aid", 1 ) ) &&
         skill_level == -1 ) {
-        popup( _( "Removing bionics requires a cutting tool and a first aid kit." ) );
+        popup( _( "Removing bionics requires a tool with %s quality, and a first aid kit." ), CUT_FINE.obj().name.c_str() );
         return false;
     }
 
@@ -834,21 +836,21 @@ bool player::uninstall_bionic( std::string const &b_id, int skill_level )
         return false;
     }
 
-    // removal of bionics adds +2 difficulty over installation
+    // removal of bionics adds +2 difficulty over installation, high quality tool substracts its fine cutting quality amount
     int chance_of_success;
     if( skill_level != -1 ) {
         chance_of_success = bionic_manip_cos( skill_level,
                                               skill_level,
                                               skill_level,
                                               skill_level,
-                                              difficulty + 2 );
+                                              difficulty + 2 - crafting_inv.max_quality( CUT_FINE ) );
     } else {
-        ///\EFFECT_INT increases chance of success removing bionics with unspecified skil level
+        ///\EFFECT_INT increases chance of success removing bionics with unspecified skill level
         chance_of_success = bionic_manip_cos( int_cur,
                                               get_skill_level( skilll_electronics ),
                                               get_skill_level( skilll_firstaid ),
                                               get_skill_level( skilll_mechanics ),
-                                              difficulty + 2 );
+                                              difficulty + 2 - crafting_inv.max_quality( CUT_FINE ) );
     }
 
     if( !query_yn(

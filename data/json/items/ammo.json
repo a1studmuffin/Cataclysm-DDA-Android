@@ -12,7 +12,10 @@
         "volume" : 1,
         "weight" : 1,
         "ammo_type" : "battery",
-        "count" : 100
+        "count" : 100,
+        "fuel": {
+            "energy": 1
+        }
     },
     {
         "type" : "AMMO",
@@ -175,7 +178,10 @@
         "weight" : 80,
         "ammo_type" : "plutonium",
         "count" : 5,
-        "effects" : ["COOKOFF", "NEVER_MISFIRES"]
+        "effects" : ["COOKOFF", "NEVER_MISFIRES"],
+        "fuel": {
+            "energy": 10
+        }
     },
     {
         "type" : "AMMO",
@@ -278,7 +284,6 @@
         "weight" : 1,
         "ammo_type" : "BB",
         "damage" : 2,
-        "range" : 12,
         "dispersion" : 100,
         "count" : 500,
         "stack_size": 250,
@@ -402,7 +407,7 @@
         "symbol" : "=",
         "color" : "yellow",
         "description" : "An empty casing from a .22 round that hasn't been fired, and still has an intact case with primer.",
-        "material" : "steel",
+        "material" : [ "powder", "brass" ],
         "volume" : 1,
         "weight" : 1,
         "ammo_type" : "components",

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef PROJECTILE_H
 #define PROJECTILE_H
 
@@ -18,6 +19,8 @@ struct projectile {
         // bullets have arbitrarily high values but thrown objects have dodgeable values.
         int speed;
         int range;
+        // Momentum loss in impact damage points per tile traveled
+        float momentum_loss;
 
         std::set<std::string> proj_effects;
 

@@ -3391,7 +3391,7 @@
   },{
     "type" : "item_group",
     "id" : "contraband",
-    "note": "concealable items only plz",
+    "//": "concealable items only plz",
     "items":[
       ["caffeine", 25],
       ["oxycodone", 4],
@@ -4121,10 +4121,13 @@
       ["bio_teleport", 10],
       ["bio_probability_travel", 10],
       ["recipe_mil_augs", 3],
-      ["power_armor_basic", 5],
       ["rm13_armor", 2],
-      ["power_armor_light", 3],
-      ["power_armor_heavy", 3],
+      ["power_armor_helmet_basic", 3],
+      ["power_armor_basic", 3],
+      ["power_armor_helmet_light", 2],
+      ["power_armor_light", 2],
+      ["power_armor_helmet_heavy", 2],
+      ["power_armor_heavy", 2],
       ["modularvesthard", 5],
       ["minireactor", 1],
       ["recipe_caseless", 5],
@@ -5534,7 +5537,7 @@
     "type" : "item_group",
     "id" : "bionics_sci",
     "subtype": "distribution",
-    "note" : "High-tech bionics, handy for the harried researcher.  They get access to classified toys too.",
+    "//" : "High-tech bionics, handy for the harried researcher.  They get access to classified toys too.",
     "items":[
       ["bio_solar", 5],
       ["bio_batteries", 20],
@@ -5713,7 +5716,8 @@
       ["glasses_bal", 40],
       ["armguard_hard", 20],
       ["legguard_hard", 15],
-      ["power_armor_basic", 5],
+      ["power_armor_helmet_basic", 3],
+      ["power_armor_basic", 3],
       ["power_armor_frame", 4],
       ["helmet_army", 40],
       ["helmet_liner", 10],
@@ -5782,7 +5786,8 @@
       ["helmet_liner", 20],
       ["beret", 50],
       ["beret_wool", 40],
-      ["mask_bal", 10]
+      ["mask_bal", 10],
+      ["power_armor_helmet_basic", 4]
     ]
   },{
     "type" : "item_group",
@@ -5912,7 +5917,7 @@
       "type" : "item_group",
     "id" : "bionics_op",
     "subtype": "distribution",
-    "note" : "What the commandos get.",
+    "//" : "What the commandos get.",
     "items":[
       ["bio_power_storage_mkII", 10],
       ["bio_solar", 15],
@@ -6604,6 +6609,7 @@
       ["survivormap", 1],
       ["miner_hat", 10],
       ["bio_blaster", 10],
+      ["honey_ant", 30],
       ["tool_black_powder_charge", 1]
     ]
   },{
@@ -6611,7 +6617,7 @@
     "id" : "razorclaw_nest",
     "subtype" : "distribution",
     "entries":[
-      {"item":"razorclaw_roe", "repeat": [ 1,6 ]}
+      {"item":"razorclaw_roe", "count-min": 1, "count-max": 6 }
     ]
   },{
     "type" : "item_group",
@@ -8561,7 +8567,7 @@
     "type" : "item_group",
     "id" : "bionics_tech",
     "subtype": "distribution",
-    "note" : "Bionics used by technicians.",
+    "//" : "Bionics used by technicians.",
     "items":[
       ["bio_torsionratchet", 20],
       ["bio_memory", 20],
@@ -8574,7 +8580,7 @@
     "type" : "item_group",
     "id" : "bionics_subs",
     "subtype": "distribution",
-    "note" : "Bionics dropped by substation mini-boss.",
+    "//" : "Bionics dropped by substation mini-boss.",
     "items":[
       ["bio_power_storage", 20],
       ["bio_batteries", 20],

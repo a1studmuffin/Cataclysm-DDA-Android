@@ -493,6 +493,7 @@
         "symbol": ".",
         "color": "ltgray",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "INDOORS", "FLAT", "ROAD"],
         "bash": {
             "ter_set": "t_null",
@@ -1155,6 +1156,7 @@
         "symbol": "+",
         "color": "ltcyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "TRANSPARENT", "DOOR", "NOITEM", "CONNECT_TO_WALL"
         ],
@@ -1179,6 +1181,7 @@
         "symbol": "'",
         "color": "ltcyan",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "close": "t_reinforced_door_glass_c",
         "bash": {
@@ -1221,6 +1224,7 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "DOOR", "NOITEM", "BARRICADABLE_DOOR", "CONNECT_TO_WALL"
         ],
@@ -1250,6 +1254,7 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "DOOR", "NOITEM", "BARRICADABLE_DOOR", "CONNECT_TO_WALL"
         ],
@@ -1282,6 +1287,7 @@
         "symbol": "&",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "TRANSPARENT", "FLAMMABLE_ASH", "NOITEM", "REDUCE_SCENT",
             "BARRICADABLE_DOOR_DAMAGED", "PERMEABLE", "CONNECT_TO_WALL"
@@ -1305,6 +1311,7 @@
         "symbol": "&",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "TRANSPARENT", "FLAMMABLE_ASH", "NOITEM", "REDUCE_SCENT",
             "BARRICADABLE_DOOR_DAMAGED", "PERMEABLE", "CONNECT_TO_WALL"
@@ -1328,6 +1335,7 @@
         "symbol": "'",
         "color": "brown",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "TRANSPARENT",
             "FLAT", "BARRICADABLE_DOOR", "CONNECT_TO_WALL",
@@ -1359,6 +1367,7 @@
         "symbol": "'",
         "color": "brown",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "TRANSPARENT",
             "FLAT", "BARRICADABLE_DOOR", "CONNECT_TO_WALL", "ROAD"
@@ -1391,6 +1400,7 @@
         "symbol": "+",
         "color": "red",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "DOOR", "NOITEM", "BARRICADABLE_DOOR_REINFORCED", "CONNECT_TO_WALL"
         ],
@@ -1420,6 +1430,7 @@
         "symbol": "&",
         "color": "red",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "TRANSPARENT", "FLAMMABLE_ASH", "NOITEM", "REDUCE_SCENT",
             "BARRICADABLE_DOOR_REINFORCED_DAMAGED",
@@ -1443,6 +1454,7 @@
         "symbol": "'",
         "color": "red",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "TRANSPARENT", "FLAT", "BARRICADABLE_DOOR_REINFORCED", "CONNECT_TO_WALL", "ROAD"
         ],
@@ -1472,7 +1484,8 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
-        "flags": ["FLAMMABLE_ASH", "NOITEM", "REDUCE_SCENT", "CONNECT_TO_WALL"],
+        "roof": "t_flat_roof",
+        "flags": ["FLAMMABLE_ASH", "NOITEM", "REDUCE_SCENT", "CONNECT_TO_WALL", "BARRICADABLE_DOOR"],
         "examine_action": "locked_object",
         "bash": {
             "str_min": 8, "str_max": 80, "str_min_blocked": 15, "str_max_blocked": 100,
@@ -1492,8 +1505,9 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
-            "FLAMMABLE_ASH", "NOITEM", "OPENCLOSE_INSIDE", "REDUCE_SCENT", "CONNECT_TO_WALL"
+            "FLAMMABLE_ASH", "NOITEM", "OPENCLOSE_INSIDE", "REDUCE_SCENT", "CONNECT_TO_WALL", "BARRICADABLE_DOOR"
         ],
         "examine_action": "locked_object",
         "open": "t_door_o",
@@ -1515,8 +1529,9 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
-            "FLAMMABLE_ASH", "NOITEM", "OPENCLOSE_INSIDE", "REDUCE_SCENT", "CONNECT_TO_WALL"
+            "FLAMMABLE_ASH", "NOITEM", "OPENCLOSE_INSIDE", "REDUCE_SCENT", "CONNECT_TO_WALL", "BARRICADABLE_DOOR"
         ],
         "open": "t_door_o_peep",
         "examine_action": "door_peephole",
@@ -1539,8 +1554,9 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
-            "FLAMMABLE_ASH", "ALARMED", "NOITEM", "REDUCE_SCENT", "CONNECT_TO_WALL"],
+            "FLAMMABLE_ASH", "ALARMED", "NOITEM", "REDUCE_SCENT", "CONNECT_TO_WALL", "BARRICADABLE_DOOR"],
         "examine_action": "locked_object",
         "bash": {
             "str_min": 8, "str_max": 80, "str_min_blocked": 15, "str_max_blocked": 100,
@@ -1560,30 +1576,31 @@
         "symbol": "+",
         "color": "dkgray",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "DOOR", "NOITEM", "CONNECT_TO_WALL"
         ],
         "open": "t_door_curtain_o",
         "deconstruct": {
-            "ter_set": "t_door_frame",
+            "ter_set": "t_dirt",
             "items": [
                 { "item": "stick", "count": 1 },
                 { "item": "sheet", "count": 2 },
-                { "item": "string_36", "prob": 50 }
+                { "item": "withered", "count": 12 }
             ]
         },
         "bash": {
-            "str_min": 3, "str_max": 6,
+            "str_min": 1, "str_max": 4,
             "sound": "rrrrip!",
             "sound_fail": "slap!",
             "sound_vol": 6,
             "sound_fail_vol": 3,
-            "ter_set": "t_door_frame",
+            "ter_set": "t_dirt",
             "items": [
                 { "item": "sheet", "count": [0, 1] },
                 { "item": "rag", "count": [2, 5] },
                 { "item": "stick", "count": 1 },
-                { "item": "string_36", "count": 1 }
+                { "item": "withered", "count": [2, 12] }
             ]
         }
     },{
@@ -1593,6 +1610,7 @@
         "symbol": "+",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "DOOR", "NOITEM", "CONNECT_TO_WALL"
         ],
@@ -1601,7 +1619,7 @@
             "ter_set": "t_door_frame",
             "items": [
                 { "item": "2x4", "count": 6 },
-                { "item": "rope_6", "count": 2 }
+                { "item": "rope_makeshift_6", "count": 2 }
             ]
         },
         "bash": {
@@ -1611,8 +1629,8 @@
             "ter_set": "t_door_frame",
             "items": [
                 { "item": "2x4", "count": [2, 5] },
-                { "item": "rope_6", "count": [0, 1] },
-                { "item": "string_36", "count": [1, 6] },
+                { "item": "rope_makeshift_6", "count": [0, 1] },
+                { "item": "withered", "count": [2, 12] },
                 { "item": "splinter", "count": [5, 10] }
             ]
         }
@@ -1623,32 +1641,33 @@
         "symbol": "'",
         "color": "dkgray",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "TRANSPARENT",
             "FLAT", "CONNECT_TO_WALL",
             "ROAD"
         ],
         "deconstruct": {
-            "ter_set": "t_door_frame",
+            "ter_set": "t_dirt",
             "items": [
                 { "item": "stick", "count": 1 },
                 { "item": "sheet", "count": 2 },
-                { "item": "string_36", "prob": 50 }
+                { "item": "withered", "count": 12 }
             ]
         },
         "close": "t_door_curtain_c",
         "bash": {
-            "str_min": 2, "str_max": 6,
+            "str_min": 1, "str_max": 4,
             "sound": "rrrrip!",
             "sound_fail": "slap!",
             "sound_vol": 5,
             "sound_fail_vol": 2,
-            "ter_set": "t_door_frame",
+            "ter_set": "t_dirt",
             "items": [
                 { "item": "sheet", "count": [0, 1] },
                 { "item": "rag", "count": [2, 5] },
                 { "item": "stick", "count": 1 },
-                { "item": "string_36", "count": 1 }
+                { "item": "withered", "count": [2, 12] }
             ]
         }
     },{
@@ -1658,6 +1677,7 @@
         "symbol": "'",
         "color": "brown",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": [
             "FLAMMABLE_ASH", "TRANSPARENT",
             "FLAT", "CONNECT_TO_WALL",
@@ -1667,7 +1687,7 @@
             "ter_set": "t_door_frame",
             "items": [
                 { "item": "2x4", "count": 6 },
-                { "item": "rope_6", "count": 2 }
+                { "item": "rope_makeshift_6", "count": 2 }
             ]
         },
         "close": "t_door_makeshift_c",
@@ -1678,8 +1698,8 @@
             "ter_set": "t_door_frame",
             "items": [
                 { "item": "2x4", "count": [2, 5] },
-                { "item": "rope_6", "count": [0, 1] },
-                { "item": "string_36", "count": [1, 6] },
+                { "item": "rope_makeshift_6", "count": [0, 1] },
+                { "item": "withered", "count": [2, 12] },
                 { "item": "splinter", "count": [5, 10] }
             ]
         }
@@ -1690,6 +1710,7 @@
         "symbol": ".",
         "color": "brown",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "bash": {
             "str_min": 6, "str_max": 25,
@@ -1709,6 +1730,7 @@
         "symbol": ".",
         "color": "dkgray",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "bash": {
             "str_min": 18, "str_max": 75,
@@ -1727,6 +1749,7 @@
         "symbol": ".",
         "color": "dkgray",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "bash": {
             "str_min": 18, "str_max": 75,
@@ -1850,6 +1873,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
             "str_min": 15, "str_max": 80, "str_min_blocked": 17, "str_max_blocked": 100,
@@ -1869,6 +1893,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
             "str_min": 10, "str_max": 40, "str_min_blocked": 9, "str_max_blocked": 50,
@@ -1888,6 +1913,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "examine_action": "door_peephole",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
@@ -1908,6 +1934,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
             "str_min": 25, "str_max": 60, "str_min_blocked": 32, "str_max_blocked": 70,
@@ -1927,6 +1954,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
             "str_min": 20, "str_max": 50, "str_min_blocked": 24, "str_max_blocked": 60,
@@ -1946,6 +1974,7 @@
         "symbol": "#",
         "color": "brown",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "examine_action": "door_peephole",
         "flags": ["FLAMMABLE_ASH", "NOITEM", "WALL"],
         "bash": {
@@ -1967,6 +1996,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["NOITEM", "DOOR", "CONNECT_TO_WALL"],
         "open": "t_door_metal_o",
         "bash": {
@@ -1986,6 +2016,7 @@
         "symbol": "'",
         "color": "cyan",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "close": "t_door_metal_c",
         "bash": {
@@ -2005,6 +2036,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["NOITEM", "DOOR", "CONNECT_TO_WALL"],
         "open": "t_door_metal_o_peep",
         "examine_action": "door_peephole",
@@ -2026,6 +2058,7 @@
         "symbol": "'",
         "color": "cyan",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "close": "t_door_metal_c_peep",
         "bash": {
@@ -2047,6 +2080,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["NOITEM", "REDUCE_SCENT", "CONNECT_TO_WALL"],
         "bash": {
             "str_min": 80, "str_max": 250,
@@ -2066,6 +2100,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["NOITEM", "REDUCE_SCENT", "OPENCLOSE_INSIDE", "CONNECT_TO_WALL"],
         "examine_action": "locked_object",
         "open": "t_door_metal_o",
@@ -2087,6 +2122,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "NOITEM", "PERMEABLE", "CONNECT_TO_WALL"],
         "open": "t_door_bar_o",
         "close": "t_door_bar_locked",
@@ -2107,6 +2143,7 @@
         "symbol": "'",
         "color": "cyan",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "close": "t_door_bar_c",
         "bash": {
@@ -2127,6 +2164,7 @@
         "symbol": "+",
         "color": "cyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "NOITEM", "PERMEABLE", "CONNECT_TO_WALL"],
         "bash": {
             "str_min": 30, "str_max": 210, "str_min_blocked": 40, "str_max_blocked": 240,
@@ -2145,6 +2183,7 @@
         "symbol": "+",
         "color": "ltcyan",
         "move_cost": 0,
+        "roof": "t_flat_roof",
         "flags": [
             "TRANSPARENT", "DOOR", "NOITEM", "CONNECT_TO_WALL"
         ],
@@ -2173,6 +2212,7 @@
         "symbol": "'",
         "color": "ltcyan",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "FLAT", "CONNECT_TO_WALL", "ROAD"],
         "close": "t_door_glass_c",
         "deconstruct": {
@@ -3062,7 +3102,7 @@
         "transforms_into": "t_tree_apricot_harvested",
         "examine_action": "harvest_ter_nectar",
         "harvest_by_season" : [
-            { "seasons": [ "autumn" ], "entries": [ { "drop": "apricot", "base_num": [ 2, 5 ], "scaled_num": [ 0, 0.5 ] } ] }
+            { "seasons": [ "summer" ], "entries": [ { "drop": "apricot", "base_num": [ 2, 5 ], "scaled_num": [ 0, 0.5 ] } ] }
         ],
         "bash": {
             "str_min": 80, "str_max": 180,
@@ -3105,7 +3145,7 @@
         "transforms_into": "t_tree_plum_harvested",
         "examine_action": "harvest_ter_nectar",
         "harvest_by_season" : [
-            { "seasons": [ "autumn" ], "entries": [ { "drop": "plums", "base_num": [ 2, 5 ], "scaled_num": [ 0, 0.5 ] } ] }
+            { "seasons": [ "summer" ], "entries": [ { "drop": "plums", "base_num": [ 2, 5 ], "scaled_num": [ 0, 0.5 ] } ] }
         ],
         "bash": {
             "str_min": 80, "str_max": 180,
@@ -3228,7 +3268,7 @@
         "move_cost": 0,
         "flags": ["FLAMMABLE_ASH", "NOITEM", "SUPPORTS_ROOF", "TREE", "REDUCE_SCENT"],
         "examine_action": "harvest_ter",
-        "transforms_into": "t_tree_birch_harvested",
+        "transforms_into": "t_tree_willow_harvested",
         "harvest_by_season" : [
             { "seasons": [ "spring", "summer", "autumn", "winter" ], "entries": [ { "drop": "willowbark", "base_num": [ 1, 2 ] } ] }
         ],
@@ -3364,6 +3404,7 @@
         "type" : "terrain",
         "id" : "t_underbrush",
         "name": "underbrush",
+        "description": "Small plants and shrubs that decorate the forest.  An observant forager could obtain edible plants, acorns, eggs, and mushrooms from it.",
         "symbol": "#",
         "color": "ltgreen",
         "move_cost": 6,
@@ -4635,7 +4676,7 @@
             "sound_fail": "whump.",
             "ter_set": "t_null",
             "items": [
-                { "item": "rope_6", "count": [3, 4] },
+                { "item": "rope_makeshift_6", "count": [3, 4] },
                 { "item": "2x4", "count": [1, 4] },
                 { "item": "splinter", "count": [2, 4] }
             ]
@@ -4643,7 +4684,7 @@
         "deconstruct": {
             "ter_set": "t_dirtfloor",
             "items": [
-                { "item": "rope_30", "count": 1 },
+                { "item": "rope_makeshift_30", "count": 1 },
                 { "item": "2x4", "count": 8 }
             ]
         }
@@ -4797,6 +4838,7 @@
         "symbol": ">",
         "color": "yellow",
         "move_cost": 2,
+        "roof": "t_flat_roof",
         "flags": ["TRANSPARENT", "GOES_DOWN", "INDOORS", "PLACE_ITEM"]
     },{
         "type": "terrain",
@@ -5982,7 +6024,7 @@
         "deconstruct": {
             "ter_set": "t_water_dp",
             "items": [
-                { "item": "rope_6", "count": [3, 4] },
+                { "item": "rope_makeshift_6", "count": [3, 4] },
                 { "item": "2x4", "count": 8 }
             ]
         },

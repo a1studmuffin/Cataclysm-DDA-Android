@@ -809,7 +809,6 @@
     ],
     "armor_interface": true,
     "toggled": true,
-    "act_cost": 1,
     "react_cost": 1,
     "time": 1
   },
@@ -824,7 +823,6 @@
     ],
     "armor_interface": true,
     "toggled": true,
-    "act_cost": 1,
     "react_cost": 1,
     "time": 2
   },
@@ -1167,7 +1165,7 @@
     "id": "bio_time_freeze",
     "type": "bionic",
     "name": "Time Dilation",
-    "description": "At an immense cost of power, you may increase your body speed and reactions dramatically, essentially freezing time.  You are still delicate, however, and violent or rapid movements may damage you due to friction.",
+    "description": "At the cost of all stored bionic power, you may increase your body speed and reactions dramatically, essentially freezing time.  You are still delicate, however, and violent or rapid movements may damage you due to friction.",
     "occupied_bodyparts": [
       [ "TORSO", 12 ],
       [ "HEAD", 3 ],

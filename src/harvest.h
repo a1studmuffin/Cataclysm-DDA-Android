@@ -1,8 +1,11 @@
+#pragma once
 #ifndef HARVEST_H
 #define HARVEST_H
 
 #include <list>
+#include <map>
 #include <set>
+
 #include "string_id.h"
 
 typedef std::string itype_id;
@@ -52,6 +55,8 @@ class harvest_list
         const std::set<std::string> &names() const {
             return names_;
         }
+
+        std::string describe( int at_skill = -1 ) const;
 
         std::list<harvest_entry>::const_iterator begin() const;
         std::list<harvest_entry>::const_iterator end() const;
