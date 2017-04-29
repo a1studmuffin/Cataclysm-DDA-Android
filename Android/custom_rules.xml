@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="custom_rules">
+
+<target name="-pre-build">
+    <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -flto&quot; APP_CPPFLAGS+=&quot; -DRELEASE=1 -flto&quot; APP_LDFLAGS+=&quot;-flto&quot;" else=""> 
+        <equals  arg1="${build.is.packaging.debug}" arg2="false" trim="true" /> 
+    </condition>
+
+    <condition property="cdda.debug" value="1" else="0"> 
+        <equals  arg2="${build.is.packaging.debug}" arg1="true" trim="true"/> 
+    </condition>
+ 
+    <echo>DEBUG=${build.is.packaging.debug}</echo>
+    <echo>NDK_DEBUG=${cdda.debug}</echo>
+    <echo>FLAGS=${cdda.flags}</echo>
+    <exec executable="${ndk.dir}/ndk-build" failonerror="true"> 
+        <arg value="-j2" />
+        <arg value="NDK_DEBUG=${cdda.debug} " />
+        <arg line="${cdda.flags}" />
+    </exec>
+</target>
+
+<target name="clean" depends="android_rules.clean">
+    <exec executable="${ndk.dir}/ndk-build" failonerror="true">
+        <arg value="clean"/>
+    </exec>
+</target>
+
+</project>
