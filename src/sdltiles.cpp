@@ -217,7 +217,7 @@ static SDL_Texture *touch_joystick;
 int WindowWidth;        //Width of the actual window, not the curses window
 int WindowHeight;       //Height of the actual window, not the curses window
 // input from various input sources. Each input source sets the type and
-// the actual input value (key pressed, mouse button clicked, ...)
+// the actual input value (key pressed, button clicked, ...)
 // This value is finally returned by input_manager::get_input_event.
 input_event last_input;
 
@@ -358,6 +358,8 @@ bool WinCreate()
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 5); 
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 6); 
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5); 
+
+    SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "1");
 #endif
 
     window = SDL_CreateWindow(version.c_str(),
@@ -2482,8 +2484,6 @@ void CheckMessages()
             case SDL_JOYAXISMOTION: // on gamepads, the axes are the analog sticks
                 // TODO: somehow get the "digipad" values from the axes
             break;
-#ifndef __ANDROID__
-            // Disable mouse input on Android build, interferes with touch input
             case SDL_MOUSEMOTION:
                 if (get_option<std::string>( "HIDE_CURSOR" ) == "show" || get_option<std::string>( "HIDE_CURSOR" ) == "hidekb") {
                     if (!SDL_ShowCursor(-1)) {
@@ -2513,7 +2513,6 @@ void CheckMessages()
                     last_input = input_event(SCROLLWHEEL_DOWN, CATA_INPUT_MOUSE);
                 }
                 break;
-#endif
 
 #ifdef __ANDROID__
               case SDL_FINGERMOTION:
