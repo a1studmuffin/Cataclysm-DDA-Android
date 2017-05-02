@@ -2366,6 +2366,10 @@ void CheckMessages()
                     needupdate = true;
 #ifdef __ANDROID__
 					needs_sdl_surface_visibility_refresh = true;
+					if(android_is_hardware_keyboard_available()) {
+						SDL_StopTextInput();
+						SDL_StartTextInput();
+					}
 #endif
                     break;
                 default:
