@@ -431,6 +431,7 @@ public class SDLActivity extends Activity {
     public static native void nativeQuit();
     public static native void nativePause();
     public static native void nativeResume();
+	public static native void nativeWaitForPause();
     public static native void onNativeDropFile(String filename);
     public static native void onNativeVisibleDisplayFrameChanged(int left, int top, int right, int bottom);
     public static native void onNativeResize(int x, int y, int format, float rate);
@@ -1127,6 +1128,12 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     public void surfaceChanged(SurfaceHolder holder,
                                int format, int width, int height) {
         Log.v("SDL", "surfaceChanged()");
+        
+        /* This is not safe to do without blocking the event loop! So let's do that now. */
+        if (SDLActivity.mSDLThread == null) {
+        	SDLActivity.handlePause();
+        	SDLActivity.nativeWaitForPause();
+        }
 
         int sdlFormat = 0x15151002; // SDL_PIXELFORMAT_RGB565 by default
         switch (format) {
