@@ -13649,7 +13649,7 @@ void intro()
               "- Enable tiles & change terminal size under Settings > Options > Graphics.\n"
               "- For the best keyboard experience, use an SSH-friendly virtual keyboard\n"
               "  such as \"Hacker's Keyboard\" on the Google Play store.\n"
-              "- Please report Android bugs to Michael Davies: m@michaeldavies.com.au\n"
+              "- For support visit: github.com/a1studmuffin/Cataclysm-DDA-Android\n"
               );
         fold_and_print(tmp, 0, 0, maxx, c_white, android_msg, minWidth, minHeight, maxx, maxy);
         wrefresh(tmp);

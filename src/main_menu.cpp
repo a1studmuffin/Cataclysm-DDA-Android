@@ -76,7 +76,7 @@ void main_menu::print_menu( WINDOW *w_open, int iSel, const int iMenuOffsetX, in
 
     center_print( w_open, window_height - 1, c_red,
 #ifdef __ANDROID__
-                  _( "Please send bug reports and feedback to Michael Davies: m@michaeldavies.com.au" ) );
+                  _( "Please report bugs at github.com/a1studmuffin/Cataclysm-DDA-Android" ) );
 #else
                   _( "Please report bugs to kevin.granade@gmail.com or post on the forums." ) );
 #endif
