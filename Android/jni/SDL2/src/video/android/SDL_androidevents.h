@@ -22,6 +22,9 @@
 
 #include "SDL_androidvideo.h"
 
+extern void android_egl_context_backup();
+extern void android_egl_context_restore();
+
 extern void Android_PumpEvents(_THIS);
 
 /* vi: set ts=4 sw=4 expandtab: */

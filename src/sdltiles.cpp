@@ -2356,6 +2356,8 @@ void CheckMessages()
                     //LOGD("Window size changed: OldWindowWidth: %d OldWindowHeight: %d WindowWidth: %d WindowHeight: %d", WindowWidth, WindowHeight, ev.window.data1, ev.window.data2);
                     WindowWidth = ev.window.data1;
                     WindowHeight = ev.window.data2;
+                    SDL_Delay(500);
+                    SDL_GetWindowSurface(window);
                     refresh_display();
                     needupdate = true;
                     break;
