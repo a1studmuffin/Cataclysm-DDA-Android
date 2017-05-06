@@ -15,9 +15,11 @@ import android.app.Activity;
 import android.app.Application;
 import android.app.Dialog;
 import android.app.ProgressDialog;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
+import android.content.DialogInterface;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
@@ -101,20 +103,30 @@ public class SplashScreen extends Activity {
         }
     }
 
-    private class InstallProgramTask extends AsyncTask<Void, Integer, Void> {
-        private static final int TOTAL_FILES = 1466;
+    private class InstallProgramTask extends AsyncTask<Void, Integer, Boolean> {
+        private static final int TOTAL_FILES = 1438;
         private final List<String> PRESERVE_SUBFOLDERS = Arrays.asList("sound", "mods", "gfx"); // don't delete custom subfolders under these folders
         private final List<String> PRESERVE_FOLDERS = Arrays.asList("font"); // don't delete this folder
         private final List<String> PRESERVE_FILES = Arrays.asList("user-default-mods.json"); // don't delete this file
         private int installedFiles = 0;
+        private AlertDialog alert;
 
         @Override
         protected void onPreExecute() {
             showDialog(INSTALL_DIALOG_ID);
+            alert = new AlertDialog.Builder(SplashScreen.this)
+				.setTitle("Installation Failed")
+				.setCancelable(false)
+				.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int id) {
+						SplashScreen.this.finish();
+						return;
+					}
+				}).create();
         }
 
         @Override
-        protected Void doInBackground(Void... params) {
+        protected Boolean doInBackground(Void... params) {
             if (installDialog != null) {
                 installDialog.setIndeterminate(false);
                 installDialog.setMax(TOTAL_FILES);
@@ -124,24 +136,29 @@ public class SplashScreen extends Activity {
             AssetManager assetManager = getAssets();
             String externalFilesDir = getExternalFilesDir(null).getPath();
 
-            // Clear out the old data if it exists (but preserve custom folders + files)
-            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/data"));
-            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/gfx"));
-            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lua"));
-            deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lang"));
+			try {
+				// Clear out the old data if it exists (but preserve custom folders + files)
+				deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/data"));
+				deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/gfx"));
+				deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lua"));
+				deleteRecursive(assetManager, externalFilesDir, new File(externalFilesDir + "/lang"));
 
-            // Install the new data over the top
-            copyAssetFolder(assetManager, "data", externalFilesDir + "/data");
-            copyAssetFolder(assetManager, "gfx", externalFilesDir + "/gfx");
-            copyAssetFolder(assetManager, "lua", externalFilesDir + "/lua");
-            copyAssetFolder(assetManager, "lang", externalFilesDir + "/lang");
+				// Install the new data over the top
+				copyAssetFolder(assetManager, "data", externalFilesDir + "/data");
+				copyAssetFolder(assetManager, "gfx", externalFilesDir + "/gfx");
+				copyAssetFolder(assetManager, "lua", externalFilesDir + "/lua");
+				copyAssetFolder(assetManager, "lang", externalFilesDir + "/lang");
+            } catch(Exception e) {
+				alert.setMessage(e.getMessage());
+				return false;
+            }
 
             // Remember which version the installed data is 
             PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).edit().putString("installed", getVersionName()).commit();
 
             publishProgress(++installedFiles);
             Log.d(TAG, "Total number of files copied: " + installedFiles);
-            return null;
+            return true;
         }
 
         void deleteRecursive(AssetManager assetManager, String externalFilesDir, File fileOrDirectory) {
@@ -171,7 +188,7 @@ public class SplashScreen extends Activity {
         // Returns true if an asset exists in the APK (either a directory or a file)
         // eg. assetExists("data/sound") or assetExists("data/font", "unifont.ttf") would both return true
         private boolean assetExists(AssetManager assetManager, String assetPath) {
-            return assetExists(assetManager, assetPath, "");
+		    return assetExists(assetManager, assetPath, "");
         }
 
         private boolean assetExists(AssetManager assetManager, String assetPath, String assetName) {
@@ -191,7 +208,7 @@ public class SplashScreen extends Activity {
         }
 
         // Pinched from http://stackoverflow.com/questions/16983989/copy-directory-from-assets-to-data-folder
-        private boolean copyAssetFolder(AssetManager assetManager, String fromAssetPath, String toPath) {
+        private boolean copyAssetFolder(AssetManager assetManager, String fromAssetPath, String toPath) throws Exception {
             try {
                 String[] files = assetManager.list(fromAssetPath);
                 new File(toPath).mkdirs();
@@ -206,11 +223,11 @@ public class SplashScreen extends Activity {
                 return res;
             } catch (Exception e) {
                 e.printStackTrace();
-                return false;
+                throw e;
             }
         }
 
-        private boolean copyAsset(AssetManager assetManager, String fromAssetPath, String toPath) {
+        private boolean copyAsset(AssetManager assetManager, String fromAssetPath, String toPath) throws Exception {
             publishProgress(++installedFiles, TOTAL_FILES);
             InputStream in = null;
             OutputStream out = null;
@@ -227,7 +244,7 @@ public class SplashScreen extends Activity {
               return true;
             } catch(Exception e) {
                 e.printStackTrace();
-                return false;
+                throw e;
             }
         }
 
@@ -248,9 +265,13 @@ public class SplashScreen extends Activity {
         }
 
         @Override
-        protected void onPostExecute(Void result) {
+        protected void onPostExecute(Boolean result) {
             removeDialog(INSTALL_DIALOG_ID);
-            startGameActivity(true);
+			if(result) {
+			    startGameActivity(true);
+			} else {
+				alert.show();
+			}
         }
     }
 }
