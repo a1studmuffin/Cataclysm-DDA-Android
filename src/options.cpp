@@ -1166,7 +1166,11 @@ void options_manager::init()
 
     add("ANIMATION_DELAY", "graphics", _("Animation delay"),
         _("The amount of time to pause between animation frames in ms."),
+#ifdef __ANDROID__
+        0, 300, 150
+#else
         0, 100, 10
+#endif
         );
 
     add("FORCE_REDRAW", "graphics", _("Force redraw"),

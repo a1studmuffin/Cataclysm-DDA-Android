@@ -3177,11 +3177,56 @@ input_event input_manager::get_input_event(WINDOW *win) {
     // BUGFIX for experimental - don't force mainwin if NULL win was passed in, otherwise this ruins the Android intro message.
     if (!is_android_intro_message)
         if(win == NULL) win = mainwin;
+    
+    //bool android_psave = get_option<bool>( "ANDROID_BATTERY_SAVER" );
 #endif
 
     wrefresh(win);
 
+#ifdef __ANDROID__
     if (inputdelay < 0)
+    {
+        do
+        {
+            SDL_WaitEvent(NULL);
+            CheckMessages();
+            if (last_input.type != CATA_INPUT_ERROR) break;
+            SDL_Delay(1);
+        }
+        while (last_input.type == CATA_INPUT_ERROR);
+    }
+    else if (inputdelay > 0)
+    {
+        unsigned long starttime=SDL_GetTicks();
+        unsigned long endtime;
+        bool timedout = false;
+        do
+        {
+            if(SDL_WaitEventTimeout(NULL, inputdelay) == 0) {
+                timedout=true;
+                CheckMessages();
+                last_input.type = CATA_INPUT_TIMEOUT;
+                break;
+            } else {
+                CheckMessages();
+                endtime=SDL_GetTicks();
+                if (last_input.type != CATA_INPUT_ERROR) break;
+                SDL_Delay(1);
+                timedout = endtime >= starttime + inputdelay;
+                if (timedout) {
+                   last_input.type = CATA_INPUT_TIMEOUT;
+            	}
+            }
+        }
+        while (!timedout);
+    }
+    else
+    {
+        SDL_WaitEvent(NULL);
+        CheckMessages();
+    }
+#else
+	if (inputdelay < 0)
     {
         do
         {
@@ -3213,6 +3258,7 @@ input_event input_manager::get_input_event(WINDOW *win) {
     {
         CheckMessages();
     }
+#endif
 
     if (last_input.type == CATA_INPUT_MOUSE) {
         SDL_GetMouseState(&last_input.mouse_x, &last_input.mouse_y);
