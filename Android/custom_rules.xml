@@ -3,9 +3,13 @@
 <project name="custom_rules">
 
 <target name="-pre-build">
-    <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot;" else="">
+    <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot; APP_LDFLAGS=&quot;-Wl,--exclude-libs,libgcc.a -Wl,--exclude-libs,libunwind.a&quot;" else="">
     <!-- <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -flto -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot; APP_LDFLAGS+=&quot;-flto&quot;" else=""> --> 
         <equals  arg1="${build.is.packaging.debug}" arg2="false" trim="true" /> 
+    </condition>
+
+    <condition property="cdda.jobs" value="${env.NUM_JOBS}" else="2">
+        <isset property="env.NUM_JOBS" />
     </condition>
 
     <condition property="cdda.debug" value="1" else="0"> 
@@ -16,7 +20,7 @@
     <echo>NDK_DEBUG=${cdda.debug}</echo>
     <echo>FLAGS=${cdda.flags}</echo>
     <exec executable="${ndk.dir}/ndk-build" failonerror="true"> 
-        <arg value="-j2" />
+        <arg value="-j${cdda.jobs}" />
         <arg value="V=1" />
         <arg value="NDK_DEBUG=${cdda.debug} " />
         <arg line="${cdda.flags}" />

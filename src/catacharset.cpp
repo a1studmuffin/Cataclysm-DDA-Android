@@ -427,9 +427,15 @@ std::wstring utf8_to_wstr( const std::string &str )
     strip_trailing_nulls( wstr );
     return wstr;
 #else
+#ifndef __ANDROID__
     std::size_t sz = std::mbstowcs( NULL, str.c_str(), str.size() );
     std::wstring wstr( sz, '\0' );
     std::mbstowcs( &wstr[0], str.c_str(), sz );
+#else
+    std::size_t sz = mbstowcs( NULL, str.c_str(), str.size() );
+    std::wstring wstr( sz, '\0' );
+    mbstowcs( &wstr[0], str.c_str(), sz );
+#endif
     strip_trailing_nulls( wstr );
     return wstr;
 #endif
@@ -444,9 +450,15 @@ std::string wstr_to_utf8( const std::wstring &wstr )
     strip_trailing_nulls( str );
     return str;
 #else
+#ifndef __ANDROID__
     std::size_t sz = std::wcstombs( NULL, wstr.c_str(), wstr.size() );
     std::string str( sz, '\0' );
     std::wcstombs( &str[0], wstr.c_str(), sz );
+#else
+    std::size_t sz = wcstombs( NULL, wstr.c_str(), wstr.size() );
+    std::string str( sz, '\0' );
+    wcstombs( &str[0], wstr.c_str(), sz );
+#endif
     strip_trailing_nulls( str );
     return str;
 #endif
