@@ -1248,7 +1248,11 @@ void options_manager::init()
     
     add("SOFTWARE_RENDERING", "graphics", _("Software rendering"),
         _("Use software renderer instead of graphics card acceleration."),
+#ifdef __ANDROID__
+        true, COPT_CURSES_HIDE
+#else
         false, COPT_CURSES_HIDE
+#endif
         );
 
     //~ Do not scale the game image to the window size.
