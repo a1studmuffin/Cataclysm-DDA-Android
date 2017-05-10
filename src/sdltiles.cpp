@@ -3183,11 +3183,12 @@ input_event input_manager::get_input_event(WINDOW *win) {
 
     wrefresh(win);
 
-#ifdef __ANDROID__
+#if 0
     if (inputdelay < 0)
     {
         do
         {
+            refresh_display();
             SDL_WaitEvent(NULL);
             CheckMessages();
             if (last_input.type != CATA_INPUT_ERROR) break;
@@ -3204,11 +3205,13 @@ input_event input_manager::get_input_event(WINDOW *win) {
         {
             if(SDL_WaitEventTimeout(NULL, inputdelay) == 0) {
                 timedout=true;
+                refresh_display();
                 CheckMessages();
                 last_input.type = CATA_INPUT_TIMEOUT;
                 break;
             } else {
                 CheckMessages();
+                refresh_display();
                 endtime=SDL_GetTicks();
                 if (last_input.type != CATA_INPUT_ERROR) break;
                 SDL_Delay(1);
@@ -3222,6 +3225,7 @@ input_event input_manager::get_input_event(WINDOW *win) {
     }
     else
     {
+        refresh_display();
         SDL_WaitEvent(NULL);
         CheckMessages();
     }
