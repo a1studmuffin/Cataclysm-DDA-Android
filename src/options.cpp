@@ -1674,12 +1674,12 @@ void options_manager::init()
 
     add("ANDROID_PINCH_IN_KEY", "android", _("Pinch in key (in-game)"),
         _("The key to press when pinching in during gameplay."),
-        "z", 1
+        "Z", 1
         );
 
     add("ANDROID_PINCH_OUT_KEY", "android", _("Pinch out key (in-game)"),
         _("The key to press when pinching out during gameplay."),
-        "Z", 1
+        "z", 1
         );
 
     mOptionsSort["android"]++;
