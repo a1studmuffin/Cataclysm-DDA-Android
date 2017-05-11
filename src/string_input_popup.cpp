@@ -359,10 +359,6 @@ const std::string &string_input_popup::query_string( const bool loop, const bool
             redraw = true;
         }
     } while( loop == true );
-#ifdef __ANDROID__
-    if (get_option<bool>("ANDROID_AUTO_KEYBOARD"))
-        SDL_StopTextInput();
-#endif
 
     _text = ret.str();
     return _text;
