@@ -3,8 +3,8 @@
 <project name="custom_rules">
 
 <target name="-pre-build">
-    <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11 -fsigned-char -ffast-math&quot;" else="APP_CFLAGS+=&quot;-fsigned-char&quot;">
-    <!-- <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11 -fsigned-char -fuse-linker=gold -flto-odr-type-merging&quot; APP_LDFLAGS+=&quot;-std=c++11 -fsigned-char -fuse-linker=gold -flto-odr-type-merging&quot;" else=""> -->
+    <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot;" else="APP_CFLAGS+=&quot;&quot;">
+    <!-- <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11 -fuse-linker=gold -flto-odr-type-merging&quot; APP_LDFLAGS+=&quot;-std=c++11 -fuse-linker=gold -flto-odr-type-merging&quot;" else=""> -->
         <equals  arg1="${build.is.packaging.debug}" arg2="false" trim="true" /> 
     </condition>
 
