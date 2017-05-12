@@ -2,9 +2,22 @@
 
 <project name="custom_rules">
 
+<target name="update-nightly">
+	<get dest="nightly-props/SHA1.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//lastBuiltRevision/SHA1" />
+	<get dest="nightly-props/id.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//matrixBuild/id" />
+		
+	<xmlproperty file="nightly-props/SHA1.xml" />
+	<xmlproperty file="nightly-props/id.xml" />
+	<exec executable="git" failonerror="true">
+		<arg line="fetch https://github.com/CleverRaven/Cataclysm-DDA.git ${SHA1}" />
+	</exec>
+	<exec executable="git" failonerror="true">
+		<arg line="checkout -B update-${id}-${SHA1}"/>
+	</exec>
+</target>
+
 <target name="-pre-build">
     <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot;" else="APP_CFLAGS+=&quot;&quot;">
-    <!-- <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11 -fuse-linker=gold -flto-odr-type-merging&quot; APP_LDFLAGS+=&quot;-std=c++11 -fuse-linker=gold -flto-odr-type-merging&quot;" else=""> -->
         <equals  arg1="${build.is.packaging.debug}" arg2="false" trim="true" /> 
     </condition>
 
