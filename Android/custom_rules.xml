@@ -8,11 +8,16 @@
 		
 	<xmlproperty file="nightly-props/SHA1.xml" />
 	<xmlproperty file="nightly-props/id.xml" />
+	<propertyregex property="SHA1-8"
+        input="${SHA-1}"                 
+        regexp="^.{0,3}"
+        select="\1"/>
+	
 	<exec executable="git" failonerror="true">
-		<arg line="fetch https://github.com/CleverRaven/Cataclysm-DDA.git ${SHA1}" />
+		<arg line="fetch https://github.com/CleverRaven/Cataclysm-DDA.git" />
 	</exec>
 	<exec executable="git" failonerror="true">
-		<arg line="checkout -B update-${id}-${SHA1}"/>
+		<arg line="checkout -B update-${id}-${SHA1-8} ${SHA1}"/>
 	</exec>
 </target>
 
