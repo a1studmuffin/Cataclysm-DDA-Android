@@ -3,13 +3,13 @@
 <project name="custom_rules">
 
 <target name="update-nightly">
-	<get dest="nightly-props/SHA1.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//lastBuiltRevision/SHA1" />
-	<get dest="nightly-props/id.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//matrixBuild/id" />
+	<get dest="nightly-SHA1.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//lastBuiltRevision/SHA1" />
+	<get dest="nightly-id.xml" src="http://ci.narc.ro/job/Cataclysm-Matrix/lastBuild/api/xml?xpath=//matrixBuild/id" />
 		
-	<xmlproperty file="nightly-props/SHA1.xml" />
-	<xmlproperty file="nightly-props/id.xml" />
+	<xmlproperty file="nightly-SHA1.xml" />
+	<xmlproperty file="nightly-id.xml" />
 	<propertyregex property="SHA1-8"
-        input="${SHA-1}"                 
+        input="${SHA-1}"
         regexp="^.{0,3}"
         select="\1"/>
 	
