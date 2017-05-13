@@ -1131,7 +1131,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         Log.v("SDL", "surfaceChanged()");
         
         /* This is not safe to do without blocking the event loop! So let's do that now. */
-        if (SDLActivity.mSDLThread == null) {
+        if (SDLActivity.mSDLThread != null) {
         	SDLActivity.handlePause();
         	SDLActivity.nativeWaitForPause();
         }
