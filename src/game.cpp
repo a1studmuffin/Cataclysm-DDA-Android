@@ -4946,7 +4946,7 @@ void game::draw_sidebar()
     wmove(time_window, sideStyle ? 0 : 1, sideStyle ? 15 : 41);
     if ( u.has_watch() ) {
         wprintz(time_window, c_white, "%s", calendar::turn.print_time().c_str());
-    } else {
+    } else if( get_levz() >= 0 ) {
         std::vector<std::pair<char, nc_color> > vGlyphs;
         vGlyphs.push_back(std::make_pair('_', c_red));
         vGlyphs.push_back(std::make_pair('_', c_cyan));
@@ -4987,7 +4987,9 @@ void game::draw_sidebar()
         }
 
         wprintz(time_window, c_white, "]");
-    }
+    } else {
+        wprintz( time_window, c_white, _( "Time: ???") );
+    } 
 
     const oter_id &cur_ter = overmap_buffer.ter(u.global_omt_location());
 
@@ -10071,6 +10073,11 @@ bool game::plfire_check( const targeting_data &args ) {
         } else {
             u.moves -= rng(2, 5) * 10;
             add_msg( m_bad, _( "You can't fire your weapon, it's too heavy..." ) );
+            // break a possible loop when aiming
+            if(u.activity) {
+              u.cancel_activity();
+            }
+
             return false;
         }
     }
