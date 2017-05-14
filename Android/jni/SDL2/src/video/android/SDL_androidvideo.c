@@ -67,7 +67,7 @@ int Android_ScreenHeight = 0;
 Uint32 Android_ScreenFormat = SDL_PIXELFORMAT_UNKNOWN;
 int Android_ScreenRate = 0;
 
-SDL_sem *Android_PauseSem = NULL, *Android_PausingSem = NULL, *Android_ResumeSem = NULL;
+SDL_sem *Android_PauseSem = NULL, *Android_ResumeSem = NULL;
 
 /* Currently only one window */
 SDL_Window *Android_Window = NULL;

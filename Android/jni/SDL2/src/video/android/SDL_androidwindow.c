@@ -41,7 +41,6 @@ Android_CreateWindow(_THIS, SDL_Window * window)
     
     Android_PauseSem = SDL_CreateSemaphore(0);
     Android_ResumeSem = SDL_CreateSemaphore(0);
-    Android_PausingSem = SDL_CreateSemaphore(1);
 
     /* Adjust the window data to match the screen */
     window->x = 0;
