@@ -247,9 +247,7 @@ JNIEXPORT void JNICALL Java_org_libsdl_app_SDLActivity_onNativeSurfaceChanged(JN
         data->native_window = Android_JNI_GetNativeWindow();
         data->egl_surface = SDL_EGL_CreateSurface(_this, (NativeWindowType) data->native_window);
     }
-    
     Android_Window->surface_valid = SDL_FALSE;
-    
     /* GL Context handling is done in the event loop because this function is run from the Java thread */
     
 }
@@ -389,16 +387,6 @@ JNIEXPORT void JNICALL Java_org_libsdl_app_SDLActivity_nativeResume(
          */
         if (!SDL_SemValue(Android_ResumeSem)) SDL_SemPost(Android_ResumeSem);
     }
-}
-
-/* WaitForPause - Block Java thread until event loop is paused */
-JNIEXPORT void JNICALL Java_org_libsdl_app_SDLActivity_nativeWaitForPause(
-                                    JNIEnv* env, jclass cls)
-{
-    __android_log_print(ANDROID_LOG_VERBOSE, "SDL", "nativeWaitForPause()");
-    
-	if((SDL_SemValue(Android_PausingSem)) && (SDL_SemValue(Android_PauseSem)))
-		SDL_SemWait(Android_PausingSem);
 }
 
 JNIEXPORT void JNICALL Java_org_libsdl_app_SDLInputConnection_nativeCommitText(

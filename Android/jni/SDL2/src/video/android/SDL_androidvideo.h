@@ -40,7 +40,7 @@ typedef struct SDL_VideoData
 extern int Android_ScreenWidth;
 extern int Android_ScreenHeight;
 extern Uint32 Android_ScreenFormat;
-extern SDL_sem *Android_PauseSem, *Android_PausingSem, *Android_ResumeSem;
+extern SDL_sem *Android_PauseSem, *Android_ResumeSem;
 extern SDL_Window *Android_Window;
 
 

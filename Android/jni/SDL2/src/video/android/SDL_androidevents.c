@@ -54,7 +54,6 @@ android_egl_context_restore()
         SDL_PushEvent(&event);
     }
     Android_Window->surface_valid = SDL_FALSE;
-    SDL_GetWindowSurface(Android_Window);
 }
 
 void 
@@ -86,10 +85,6 @@ Android_PumpEvents(_THIS)
         /* Make sure this is the last thing we do before pausing */
         android_egl_context_backup();
         ANDROIDAUDIO_PauseDevices();
-        
-        /* Wake up the Java thread, if needed */
-        if(!SDL_SemValue(Android_PausingSem))
-        	SDL_SemPost(Android_PausingSem);
         
         if(SDL_SemWait(Android_ResumeSem) == 0) {
 #else
