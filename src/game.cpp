@@ -3723,7 +3723,7 @@ void game::load(std::string worldname, const save_t &name)
     read_from_file_optional( worldpath + name.base_path() + ".log", std::bind( &player::load_memorial_file, &u, _1 ) );
 
 #ifdef __ANDROID__
-    read_from_file_optional( worldpath + name + ".shortcuts", std::bind( &game::load_shortcuts, this, _1 ) );
+    read_from_file_optional( worldpath + name.base_path() + ".shortcuts", std::bind( &game::load_shortcuts, this, _1 ) );
 #endif
 
     // Now that the player's worn items are updated, their sight limits need to be
