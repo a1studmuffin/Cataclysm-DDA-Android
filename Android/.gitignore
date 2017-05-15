@@ -7,10 +7,8 @@ ant.properties
 local.properties
 proguard-project.txt
 
+# Ignore generated language modules accessible through alternate path
 assets/lang/mo
-
-# ignore property files for updating to match nightly build from ci.narc.ro
-nightly-*
 
 # Ignore keystore (used for signing release APK for Google Play)
 cddaandroid.keystore
