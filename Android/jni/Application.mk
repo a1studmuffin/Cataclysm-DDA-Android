@@ -1,8 +1,9 @@
 # Reference: https://developer.android.com/ndk/guides/application_mk.html
 
 # See CPLUSPLUS-SUPPORT.html in the NDK documentation for more information
-APP_STL := gnustl_shared
+APP_STL := c++_shared
 APP_CPPFLAGS += -std=c++11
+APP_LDFLAGS += -fuse-ld=gold
 
 # armeabi-v7a covers 98.5%, x86 is 1.5%, armeabi is 0%
 # See http://hwstats.unity3d.com/mobile/cpu.html

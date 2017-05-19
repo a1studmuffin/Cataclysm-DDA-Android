@@ -334,6 +334,6 @@ libintl_lite_bool_t bindtextdomain(const char* domain, const char* moFilePath)
 
 libintl_lite_bool_t bind_textdomain_codeset(const char* domain, const char* oFilePath)
 {
-	// not implemented yet
+	return LIBINTL_LITE_BOOL_FALSE;
 }
 #endif
