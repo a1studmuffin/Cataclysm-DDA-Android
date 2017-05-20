@@ -12,6 +12,7 @@
 #include "mondeath.h"
 #include "mondefense.h"
 #include "monfaction.h"
+#include "mongroup.h"
 #include "mtype.h"
 #include "output.h"
 #include "rng.h"
@@ -28,10 +29,6 @@ const mtype_id mon_generator( "mon_generator" );
 
 /** @relates string_id */
 template<>
-const mtype_id string_id<mtype>::NULL_ID( "mon_null" );
-
-/** @relates string_id */
-template<>
 const mtype& string_id<mtype>::obj() const
 {
     return MonsterGenerator::generator().mon_templates->obj( *this );
@@ -43,10 +40,6 @@ bool string_id<mtype>::is_valid() const
 {
     return MonsterGenerator::generator().mon_templates->is_valid( *this );
 }
-
-/** @relates string_id */
-template<>
-const species_id string_id<species_type>::NULL_ID( "spec_null" );
 
 /** @relates string_id */
 template<>
@@ -142,8 +135,8 @@ void MonsterGenerator::finalize_mtypes()
         }
 
         // adjust for worldgen difficulty parameters
-        mon.speed *= get_world_option<int>( "MONSTER_SPEED" )      / 100.0;
-        mon.hp    *= get_world_option<int>( "MONSTER_RESILIENCE" ) / 100.0;
+        mon.speed *= get_option<int>( "MONSTER_SPEED" )      / 100.0;
+        mon.hp    *= get_option<int>( "MONSTER_RESILIENCE" ) / 100.0;
 
         mon.hp = std::max( mon.hp, 1 ); // lower bound for hp scaling
 

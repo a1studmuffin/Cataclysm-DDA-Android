@@ -22,6 +22,7 @@
 #include "units.h"
 #include "cata_utility.h"
 
+class gunmod_location;
 class game;
 class Character;
 class player;
@@ -29,6 +30,7 @@ class npc;
 struct itype;
 struct mtype;
 using mtype_id = string_id<mtype>;
+extern template const string_id<mtype> string_id<mtype>::NULL_ID;
 struct islot_armor;
 struct use_function;
 class material_type;
@@ -274,7 +276,7 @@ class item : public JsonSerializer, public JsonDeserializer, public visitable<it
          * With the default parameters it makes a human corpse, created at the current turn.
          */
         /*@{*/
-        static item make_corpse( const mtype_id& mt = NULL_ID, int turn = -1, const std::string &name = "" );
+        static item make_corpse( const mtype_id& mt = string_id<mtype>::NULL_ID, int turn = -1, const std::string &name = "" );
         /*@}*/
         /**
          * @return The monster type associated with this item (@ref corpse). It is usually the
@@ -1571,7 +1573,7 @@ public:
          * Number of mods that can still be installed into the given mod location,
          * for non-guns it always returns 0.
          */
-        int get_free_mod_locations( const std::string& location ) const;
+        int get_free_mod_locations( const gunmod_location& location ) const;
         /**
          * Does it require gunsmithing tools to repair.
          */
