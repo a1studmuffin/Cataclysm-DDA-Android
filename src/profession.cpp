@@ -584,11 +584,7 @@ std::vector<item> json_item_substitution::get_substitution( const item &it,
     const long old_amt = it.count_by_charges() ? it.charges : 1l;
     for( const substitution::info &inf : sub->infos ) {
         item result( inf.new_item );
-#ifdef __ANDROID__
-        const long new_amt = std::max( 1l, ( long )round( inf.ratio * old_amt ) );
-#else
         const long new_amt = std::max( 1l, ( long )std::round( inf.ratio * old_amt ) );
-#endif
 
         if( !result.count_by_charges() ) {
             for( long i = 0; i < new_amt; i++ ) {

@@ -114,11 +114,7 @@ double erfinv( double x )
     // d/dz ( erf(z) - x ) = 2/sqrt(pi) . e^(-z^2)
 
     for( int n = 0; n < 50; ++n ) {
-#ifdef __ANDROID__
-        double step = ( erf( z ) - x ) / ( m_2_sqrtpi * exp( -z * z ) );
-#else
         double step = ( std::erf( z ) - x ) / ( m_2_sqrtpi * exp( -z * z ) );
-#endif
         z -= step;
         if( std::abs( step ) < epsilon ) {
             break;
