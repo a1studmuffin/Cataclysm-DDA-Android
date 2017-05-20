@@ -338,9 +338,6 @@ bool WinCreate()
 
 #ifndef __ANDROID__
     if (get_option<std::string>( "FULLSCREEN" ) == "fullscreen") {
-#endif
-        window_flags |= SDL_WINDOW_FULLSCREEN;
-#ifndef __ANDROID__
     } else if (get_option<std::string>( "FULLSCREEN" ) == "windowedbl") {
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
@@ -359,6 +356,7 @@ bool WinCreate()
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 6); 
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 5); 
 
+    // Prevent mouse|touch input confusion
     SDL_SetHint(SDL_HINT_ANDROID_SEPARATE_MOUSE_AND_TOUCH, "1");
 #endif
 

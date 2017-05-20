@@ -1577,7 +1577,7 @@ std::string rewrite_vsnprintf( const char *msg )
     return rewritten_msg.str();
 }
 
-#ifdef __ANDROID__
+#ifdef __ANDROID__ // TODO: Check if this is why -fsigned-char breaks localization
 std::string vstring_format_internal( char const *format, va_list args );
 #endif
 std::string vstring_format( char const *format, va_list args )

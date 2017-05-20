@@ -1167,9 +1167,6 @@ void options_manager::init()
 
     add("ANIMATION_DELAY", "graphics", _("Animation delay"),
         _("The amount of time to pause between animation frames in ms."),
-#ifdef __ANDROID__
-        0, 300, 150
-#else
         0, 100, 10
 #endif
         );
@@ -1238,7 +1235,7 @@ void options_manager::init()
         0, 10000, 0, COPT_CURSES_HIDE
         );
 
-#ifndef __ANDROID__
+#ifndef __ANDROID__ // Android is always fullscreen
     optionNames["fullscreen"] = _("Fullscreen");
     optionNames["windowedbl"] = _("Windowed borderless");
     add("FULLSCREEN", "graphics", _("Fullscreen"),
@@ -1249,7 +1246,7 @@ void options_manager::init()
     
     add("SOFTWARE_RENDERING", "graphics", _("Software rendering"),
         _("Use software renderer instead of graphics card acceleration."),
-#ifdef __ANDROID__
+#ifdef __ANDROID__ // Android performs much better with software rendering
         true, COPT_CURSES_HIDE
 #else
         false, COPT_CURSES_HIDE
