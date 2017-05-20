@@ -2,12 +2,6 @@
 
 <project name="custom_rules">
 
-<taskdef resource="net/sf/antcontrib/antcontrib.properties">
-  <classpath>
-    <pathelement location="/usr/share/ant/lib/ant-contrib.jar	"/>
-  </classpath>
-</taskdef>
-
 <target name="-pre-build">
     <condition property="cdda.flags" value="APP_CFLAGS+=&quot;-DRELEASE=1 -O3&quot; APP_CPPFLAGS+=&quot;-std=c++11&quot;" else="APP_CFLAGS+=&quot;&quot;">
         <equals  arg1="${build.is.packaging.debug}" arg2="false" trim="true" /> 
