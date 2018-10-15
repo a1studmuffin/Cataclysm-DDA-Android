@@ -1,3 +1,5 @@
+**NOTE: This repository is no longer maintained and is here purely for archival purposes. For the latest official Android version of Cataclysm: Dark Days Ahead, visit the [CleverRaven repository](https://github.com/CleverRaven/Cataclysm-DDA) or [grab the latest APK](http://dev.narc.ro/cataclysm/jenkins-latest/Android/Tiles/).**
+
 # Cataclysm: Dark Days Ahead (Android Port)
 
 This is an unofficial port of [Cataclysm: Dark Days Ahead](https://github.com/CleverRaven/Cataclysm-DDA/) (0.C Experimental) for Android.
